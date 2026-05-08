@@ -1,0 +1,12 @@
+requests==2.31.0
+scapy==2.5.0
+python-nmap==0.7.1
+paramiko==3.4.0
+dnspython==2.6.1
+cryptography==42.0.5
+pyyaml==6.0.1
+click==8.1.7
+rich==13.7.1
+colorama==0.4.6
+faker==24.3.0
+impacket==0.12.0

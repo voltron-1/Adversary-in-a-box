@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Alerts — Blue Team Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand"><span class="shield">🛡️</span><span>Blue Team SOC</span><span class="lab-badge">LAB</span></div>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/alerts" class="active">Alerts</a>
+            <a href="/playbooks">Playbooks</a>
+        </div>
+    </nav>
+    <main class="container">
+        <h1 class="page-title">⚠️ Security Alerts</h1>
+        <div class="filter-bar">
+            <span>Filter:</span>
+            <a href="/alerts?severity=all" class="filter-btn {% if severity_filter == 'all' %}active{% endif %}">All</a>
+            <a href="/alerts?severity=critical" class="filter-btn critical {% if severity_filter == 'critical' %}active{% endif %}">Critical</a>
+            <a href="/alerts?severity=high" class="filter-btn high {% if severity_filter == 'high' %}active{% endif %}">High</a>
+            <a href="/alerts?severity=medium" class="filter-btn medium {% if severity_filter == 'medium' %}active{% endif %}">Medium</a>
+        </div>
+        <section class="card">
+            <table class="alert-table">
+                <thead>
+                    <tr><th>Time</th><th>Severity</th><th>Technique</th><th>Alert Name</th><th>Source IP</th><th>Destination</th><th>Status</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    {% for alert in alerts %}
+                    <tr>
+                        <td class="monospace">{{ alert.timestamp }}</td>
+                        <td><span class="badge badge-{{ alert.severity }}">{{ alert.severity }}</span></td>
+                        <td class="technique-id"><a href="https://attack.mitre.org/techniques/{{ alert.technique.replace('.', '/') }}/" target="_blank">{{ alert.technique }}</a></td>
+                        <td>{{ alert.name }}</td>
+                        <td class="monospace">{{ alert.src_ip }}</td>
+                        <td class="monospace">{{ alert.dst_ip }}</td>
+                        <td><span class="status status-{{ alert.status }}">{{ alert.status }}</span></td>
+                        <td class="description">{{ alert.description }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" style="text-align:center; padding: 2rem;">No alerts found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </main>
+</body>
+</html>

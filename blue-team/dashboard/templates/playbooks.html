@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Playbooks — Blue Team Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand"><span class="shield">🛡️</span><span>Blue Team SOC</span><span class="lab-badge">LAB</span></div>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/alerts">Alerts</a>
+            <a href="/playbooks" class="active">Playbooks</a>
+        </div>
+    </nav>
+    <main class="container">
+        <h1 class="page-title">📋 IR Playbooks</h1>
+        <p class="subtitle">Click "Execute" to run a playbook. Provide attacker IP and affected host in the modal.</p>
+        <div class="playbook-grid">
+            {% for pb in playbooks %}
+            <div class="playbook-card">
+                <div class="playbook-header">
+                    <h3>{{ pb.name }}</h3>
+                    <span class="badge badge-{{ pb.severity }}">{{ pb.severity }}</span>
+                </div>
+                <div class="playbook-techniques">
+                    {% for t in pb.techniques %}
+                    <span class="technique-tag"><a href="https://attack.mitre.org/techniques/{{ t.replace('.', '/') }}/" target="_blank">{{ t }}</a></span>
+                    {% endfor %}
+                </div>
+                <button class="btn btn-execute" onclick="runPlaybook('{{ pb.id }}')">⚡ Execute Playbook</button>
+            </div>
+            {% endfor %}
+        </div>
+        <div id="execution-output" class="card hidden">
+            <div class="card-header"><h2>Execution Log</h2></div>
+            <pre id="output-content"></pre>
+        </div>
+    </main>
+    <script>
+        function runPlaybook(id) {
+            const attackerIp = prompt("Enter attacker IP (or leave blank):", "172.20.0.10");
+            const affectedHost = prompt("Enter affected host IP:", "172.20.0.30");
+            const output = document.getElementById('execution-output');
+            const content = document.getElementById('output-content');
+            output.classList.remove('hidden');
+            content.textContent = `Executing playbook: ${id}...\n`;
+            fetch('/api/run-playbook', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({playbook_id: id, context: {attacker_ip: attackerIp, affected_host: affectedHost}})
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    const r = data.result;
+                    content.textContent = `✓ Playbook: ${r.playbook}\n`;
+                    content.textContent += `✓ Steps completed: ${r.steps_completed}/${r.steps_total}\n\n`;
+                    r.results.forEach(s => {
+                        content.textContent += `  [${s.success ? '✓' : '✗'}] ${s.step}: ${s.output || s.error || ''}\n`;
+                    });
+                } else {
+                    content.textContent = `✗ Error: ${data.error}`;
+                }
+            }).catch(e => { content.textContent = `✗ Request failed: ${e}`; });
+        }
+    </script>
+</body>
+</html>

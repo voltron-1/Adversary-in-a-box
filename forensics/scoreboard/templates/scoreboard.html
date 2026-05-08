@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Forensic Scoreboard — Adversary-in-a-Box</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap');
+        :root { --bg: #0a0e1a; --card: #111827; --border: #1f2937; --red: #ef4444; --blue: #3b82f6; --text: #e5e7eb; --muted: #6b7280; --gold: #f59e0b; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+        header { background: var(--card); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+        header h1 { font-size: 1.5rem; }
+        .time { color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; }
+        .container { max-width: 1100px; margin: 2rem auto; padding: 0 2rem; }
+        .score-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 2rem; align-items: center; margin-bottom: 3rem; }
+        .team-card { background: var(--card); border-radius: 16px; padding: 2rem; text-align: center; border: 2px solid var(--border); }
+        .team-card.red { border-color: var(--red); }
+        .team-card.blue { border-color: var(--blue); }
+        .team-name { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .team-card.red .team-name { color: var(--red); }
+        .team-card.blue .team-name { color: var(--blue); }
+        .team-score { font-size: 5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+        .team-card.red .team-score { color: var(--red); }
+        .team-card.blue .team-score { color: var(--blue); }
+        .team-label { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; }
+        .vs { font-size: 2rem; font-weight: 700; color: var(--muted); text-align: center; }
+        .winner-banner { background: linear-gradient(135deg, #1a1a2e, #16213e); border: 2px solid var(--gold); border-radius: 12px; padding: 1.5rem; text-align: center; margin-bottom: 2rem; }
+        .winner-banner h2 { color: var(--gold); font-size: 1.4rem; }
+        .history-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+        .history-card { background: var(--card); border-radius: 12px; padding: 1.5rem; border: 1px solid var(--border); }
+        .history-card h3 { margin-bottom: 1rem; font-size: 1rem; }
+        .event-list { list-style: none; max-height: 300px; overflow-y: auto; }
+        .event-item { padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; display: flex; justify-content: space-between; }
+        .event-pts { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+        .pts-red { color: var(--red); }
+        .pts-blue { color: var(--blue); }
+        .refresh-btn { background: var(--blue); color: white; border: none; padding: 0.5rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 600; transition: opacity .2s; }
+        .refresh-btn:hover { opacity: 0.85; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🏆 Forensic Scoreboard</h1>
+        <div>
+            <span class="time">{{ now }}</span>
+            <button class="refresh-btn" onclick="location.reload()">↻ Refresh</button>
+        </div>
+    </header>
+    <div class="container">
+        {% if scores.winner != 'tie' %}
+        <div class="winner-banner">
+            <h2>🏆 {{ '🔴 Red Team' if scores.winner == 'red_team' else '🔵 Blue Team' }} is Winning!</h2>
+        </div>
+        {% endif %}
+
+        <div class="score-grid">
+            <div class="team-card red">
+                <div class="team-name">🔴 Red Team</div>
+                <div class="team-score">{{ scores.red_team.total }}</div>
+                <div class="team-label">Total Points</div>
+            </div>
+            <div class="vs">VS</div>
+            <div class="team-card blue">
+                <div class="team-name">🔵 Blue Team</div>
+                <div class="team-score">{{ scores.blue_team.total }}</div>
+                <div class="team-label">Total Points</div>
+            </div>
+        </div>
+
+        <div class="history-grid">
+            <div class="history-card">
+                <h3 style="color: var(--red);">🔴 Red Team Activity</h3>
+                <ul class="event-list">
+                    {% for event in scores.red_team.history %}
+                    <li class="event-item">
+                        <span>{{ event.event }} — {{ event.detail }}</span>
+                        <span class="event-pts pts-red">+{{ event.points }}</span>
+                    </li>
+                    {% else %}
+                    <li class="event-item"><span>No events yet</span></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="history-card">
+                <h3 style="color: var(--blue);">🔵 Blue Team Activity</h3>
+                <ul class="event-list">
+                    {% for event in scores.blue_team.history %}
+                    <li class="event-item">
+                        <span>{{ event.event }} — {{ event.detail }}</span>
+                        <span class="event-pts pts-blue">+{{ event.points }}</span>
+                    </li>
+                    {% else %}
+                    <li class="event-item"><span>No detections yet — run a campaign!</span></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    <script>setTimeout(() => location.reload(), 30000);</script>
+</body>
+</html>

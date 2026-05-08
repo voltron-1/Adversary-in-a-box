@@ -1,0 +1,18 @@
+# elasticsearch.yml — Adversary-in-a-Box Lab
+cluster.name: adversary-in-a-box
+node.name: elk-node-1
+network.host: 0.0.0.0
+http.port: 9200
+discovery.type: single-node
+
+# Disable security for lab (never do this in production)
+xpack.security.enabled: false
+xpack.monitoring.collection.enabled: true
+
+# Index settings
+action.auto_create_index: true
+indices.memory.index_buffer_size: 10%
+
+# Logging
+logger.org.elasticsearch: WARN
+logger.org.elasticsearch.node: INFO

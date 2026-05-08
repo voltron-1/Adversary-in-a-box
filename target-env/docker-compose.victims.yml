@@ -1,0 +1,33 @@
+version: "3.9"
+# Victim environment standalone compose — use with target-env only
+networks:
+  lab-net:
+    external: true
+
+services:
+  victim-web:
+    build: ./victim-web
+    container_name: victim-web
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.30
+    ports:
+      - "8080:80"
+    depends_on:
+      - victim-db
+
+  victim-db:
+    build: ./victim-db
+    container_name: victim-db
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.31
+
+  victim-mail:
+    build: ./victim-mail
+    container_name: victim-mail
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.32
+    ports:
+      - "25:25"

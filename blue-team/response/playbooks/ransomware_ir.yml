@@ -1,0 +1,56 @@
+name: Ransomware Incident Response
+incident_type: ransomware
+severity: critical
+sla_minutes: 30
+mitre_techniques:
+  - T1486  # Data Encrypted for Impact
+  - T1490  # Inhibit System Recovery
+references:
+  - https://attack.mitre.org/techniques/T1486/
+
+steps:
+  - name: "Identify affected hosts"
+    action: log
+    message: "Querying SIEM for hosts with encrypted file activity"
+    required: true
+
+  - name: "Isolate infected hosts from network"
+    action: run_script
+    script: isolate_host.sh
+    args: ["{affected_host}"]
+    required: true
+
+  - name: "Block C2 communication"
+    action: run_script
+    script: block_ip.sh
+    args: ["{attacker_ip}"]
+    required: true
+
+  - name: "Collect forensic evidence"
+    action: collect_evidence
+    required: false
+
+  - name: "Notify security team"
+    action: notify
+    message: "CRITICAL: Ransomware detected on {affected_host}. Host isolated. IR playbook initiated."
+    required: false
+
+  - name: "Preserve system state for analysis"
+    action: log
+    message: "Memory dump and disk image initiated on isolated host"
+    required: false
+
+  - name: "Identify ransom note and encryption extension"
+    action: log
+    message: "Scanning for ransom note files and encrypted file extensions"
+    required: false
+
+  - name: "Check backup integrity"
+    action: log
+    message: "Verifying backup copies are unaffected and accessible"
+    required: true
+
+  - name: "Begin recovery from clean backup"
+    action: log
+    message: "Initiating recovery process from verified clean backup"
+    required: false

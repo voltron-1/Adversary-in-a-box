@@ -1,0 +1,7 @@
+flask==3.0.3
+requests==2.31.0
+pyyaml==6.0.1
+elasticsearch==8.13.0
+rich==13.7.1
+click==8.1.7
+python-dateutil==2.9.0

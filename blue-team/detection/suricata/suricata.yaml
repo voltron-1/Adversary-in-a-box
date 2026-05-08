@@ -1,0 +1,184 @@
+%YAML 1.1
+---
+# =============================================================================
+# Suricata Configuration — Adversary-in-a-Box Lab
+# =============================================================================
+
+vars:
+  address-groups:
+    HOME_NET: "[172.20.0.0/24]"
+    EXTERNAL_NET: "!$HOME_NET"
+    HTTP_SERVERS: "$HOME_NET"
+    SMTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$HOME_NET"
+    DNS_SERVERS: "$HOME_NET"
+
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: "[$HTTP_PORTS,110,143]"
+    FTP_PORTS: 21
+    GENEVE_PORTS: 6081
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+
+default-log-dir: /var/log/suricata/
+
+stats:
+  enabled: yes
+  interval: 8
+
+outputs:
+  - fast:
+      enabled: yes
+      filename: fast.log
+      append: yes
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      pcap-file: false
+      community-id: true
+      community-id-seed: 0
+      types:
+        - alert:
+            payload: yes
+            payload-buffer-size: 4kb
+            payload-printable: yes
+            packet: yes
+            metadata: yes
+            http-body: yes
+            http-body-printable: yes
+            tagged-packets: yes
+        - http:
+            extended: yes
+        - dns:
+            query: yes
+            answer: yes
+        - tls:
+            extended: yes
+        - files:
+            force-magic: no
+        - smtp:
+            extended: yes
+        - dnp3
+        - ftp
+        - rdp
+        - ssh
+        - flow
+        - netflow
+
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: yes
+    - file:
+        enabled: yes
+        level: info
+        filename: /var/log/suricata/suricata.log
+
+af-packet:
+  - interface: eth0
+    threads: auto
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+
+pcap:
+  - interface: eth0
+
+rule-files:
+  - /etc/suricata/rules/local.rules
+
+host-os-policy:
+  linux: [0.0.0.0/0]
+
+defrag:
+  memcap: 64mb
+  hash-size: 65536
+  trackers: 65535
+  max-frags: 65535
+  prealloc: yes
+  timeout: 60
+
+flow:
+  memcap: 256mb
+  hash-size: 65536
+  prealloc: 10000
+  emergency-recovery: 30
+
+stream:
+  memcap: 256mb
+  checksum-validation: yes
+  inline: auto
+  reassembly:
+    memcap: 256mb
+    depth: 1mb
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+    randomize-chunk-size: yes
+
+http:
+  enabled: yes
+  memcap: 128mb
+
+ftp:
+  enabled: yes
+  memcap: 64mb
+
+app-layer:
+  protocols:
+    rdp:
+      enabled: yes
+    krb5:
+      enabled: yes
+    snmp:
+      enabled: yes
+    tftp:
+      enabled: yes
+    dns:
+      enabled: yes
+    ftp:
+      enabled: yes
+    http:
+      enabled: yes
+      libhtp:
+        default-config:
+          personality: IDS
+          request-body-limit: 100kb
+          response-body-limit: 100kb
+          request-body-minimal-inspect-size: 32kb
+          request-body-inspect-window: 4kb
+          response-body-minimal-inspect-size: 40kb
+          response-body-inspect-window: 16kb
+          response-body-decompress-layer-limit: 2
+          http-body-inline: auto
+          swf-decompression:
+            enabled: yes
+            type: both
+            compress-depth: 100kb
+            decompress-depth: 100kb
+          double-decode-path: no
+          double-decode-query: no
+    tls:
+      enabled: yes
+      detection-ports:
+        dp: 443
+    smtp:
+      enabled: yes
+      raw-extraction: no
+      mime:
+        decode-mime: yes
+        decode-base64: yes
+        decode-quoted-printable: yes
+        header-value-depth: 2000
+        extract-urls: yes
+        body-md5: no
+    ssh:
+      enabled: yes

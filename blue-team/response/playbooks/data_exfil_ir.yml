@@ -1,0 +1,51 @@
+name: Data Exfiltration Incident Response
+incident_type: data_exfiltration
+severity: critical
+sla_minutes: 45
+mitre_techniques:
+  - T1041   # Exfiltration Over C2 Channel
+  - T1048.003  # DNS Tunneling
+references:
+  - https://attack.mitre.org/techniques/T1041/
+
+steps:
+  - name: "Identify exfiltration destination and method"
+    action: log
+    message: "Analyzing DNS logs and proxy logs for exfiltration patterns"
+    required: true
+
+  - name: "Block C2 destination IPs and domains"
+    action: run_script
+    script: block_ip.sh
+    args: ["{c2_ip}"]
+    required: true
+
+  - name: "Quantify data exfiltrated"
+    action: log
+    message: "Calculating volume of data exfiltrated from network flow logs"
+    required: true
+
+  - name: "Identify data classification of exfiltrated content"
+    action: log
+    message: "Reviewing DLP logs and file access patterns to classify data type"
+    required: true
+
+  - name: "Collect forensic evidence"
+    action: collect_evidence
+    required: false
+
+  - name: "Isolate data source host"
+    action: run_script
+    script: isolate_host.sh
+    args: ["{source_host}"]
+    required: false
+
+  - name: "Notify legal and compliance"
+    action: notify
+    message: "BREACH NOTIFICATION: Data exfiltration confirmed. Legal team notified per compliance requirements."
+    required: false
+
+  - name: "Update DLP and egress filtering rules"
+    action: log
+    message: "Adding exfiltration IoCs to egress DLP and firewall rules"
+    required: false

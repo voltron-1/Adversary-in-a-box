@@ -1,0 +1,50 @@
+# =============================================================================
+# Suricata IDS Rules — Adversary-in-a-Box Lab
+# Custom detection rules for all red team campaigns
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# RECONNAISSANCE — T1595 Active Scanning
+# ---------------------------------------------------------------------------
+alert tcp any any -> $HOME_NET any (msg:"ET SCAN Nmap SYN Stealth Scan"; flags:S; threshold:type threshold,track by_src,count 20,seconds 1; classtype:attempted-recon; sid:1000001; rev:1;)
+alert tcp any any -> $HOME_NET any (msg:"ET SCAN Port Scan Detected - 10 ports in 5 sec"; flags:S; threshold:type threshold,track by_src,count 10,seconds 5; classtype:attempted-recon; sid:1000002; rev:1;)
+alert udp any any -> $HOME_NET 53 (msg:"ET RECON DNS Version Scan"; content:"|00 00 10 00 01|"; depth:5; classtype:attempted-recon; sid:1000003; rev:1;)
+
+# ---------------------------------------------------------------------------
+# INITIAL ACCESS — T1566 Phishing | T1190 Web Exploit
+# ---------------------------------------------------------------------------
+alert smtp any any -> $HOME_NET 25 (msg:"ET PHISHING Suspicious Email - Executable Attachment"; content:"Content-Disposition: attachment"; content:"filename="; pcre:"/filename=\"[^\"]*\.(exe|bat|ps1|vbs|js|hta)\"/i"; classtype:social-engineering; sid:1000010; rev:1;)
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQL Injection Attempt OR 1=1"; content:"' OR"; http_uri; nocase; classtype:web-application-attack; sid:1000020; rev:1;)
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER XSS Attempt Script Tag"; content:"<script>"; http_uri; nocase; classtype:web-application-attack; sid:1000021; rev:1;)
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Path Traversal Attempt"; content:"../"; http_uri; classtype:web-application-attack; sid:1000022; rev:1;)
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQLi UNION SELECT"; content:"UNION SELECT"; http_uri; nocase; classtype:web-application-attack; sid:1000023; rev:1;)
+
+# ---------------------------------------------------------------------------
+# PRIVILEGE ESCALATION — T1548
+# ---------------------------------------------------------------------------
+alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET EXPLOIT Possible Privilege Escalation sudo -l enumeration"; content:"sudo"; content:"-l"; classtype:attempted-admin; sid:1000030; rev:1;)
+
+# ---------------------------------------------------------------------------
+# LATERAL MOVEMENT — T1550.002 Pass the Hash | T1563.001 SSH Hijack
+# ---------------------------------------------------------------------------
+alert tcp any any -> $HOME_NET 445 (msg:"ET LATERAL_MOVEMENT SMB Pass-the-Hash Attempt"; content:"|FF|SMB"; depth:5; classtype:policy-violation; sid:1000040; rev:1;)
+alert tcp any any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Multiple SSH Authentication Failures"; threshold:type both,track by_src,count 5,seconds 30; classtype:attempted-user; sid:1000041; rev:1;)
+alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH Connection - Possible Hijacking"; classtype:policy-violation; sid:1000042; rev:1;)
+
+# ---------------------------------------------------------------------------
+# EXFILTRATION — T1048.003 DNS Tunnel | T1041 HTTPS C2
+# ---------------------------------------------------------------------------
+alert dns any any -> any 53 (msg:"ET DNS_TUNNEL Long DNS Subdomain - Possible Tunneling"; content:"|01 00 00 01 00 00 00 00 00 00|"; depth:10; pcre:"/^[a-z2-7]{30,}\./"; classtype:trojan-activity; sid:1000050; rev:1;)
+alert dns any any -> any 53 (msg:"ET DNS_TUNNEL High DNS Query Rate"; threshold:type threshold,track by_src,count 50,seconds 10; classtype:trojan-activity; sid:1000051; rev:1;)
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"ET C2 Suspicious HTTPS Beacon - Non-standard User-Agent"; content:"User-Agent:"; http_header; nocase; pcre:"/User-Agent:[^\r\n]*(?!Mozilla|Chrome|Safari|curl|python)/"; classtype:trojan-activity; sid:1000052; rev:1;)
+
+# ---------------------------------------------------------------------------
+# PERSISTENCE — T1053.003 Cron | T1098.004 SSH Keys
+# ---------------------------------------------------------------------------
+alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET PERSISTENCE Crontab Modification Detected"; content:"crontab"; classtype:policy-violation; sid:1000060; rev:1;)
+
+# ---------------------------------------------------------------------------
+# MALWARE / GENERAL
+# ---------------------------------------------------------------------------
+alert tcp $HOME_NET any -> $EXTERNAL_NET any (msg:"ET MALWARE Reverse Shell Connection Attempt"; content:"/bin/bash"; content:"-i"; classtype:trojan-activity; sid:1000070; rev:1;)
+alert tcp $HOME_NET any -> $EXTERNAL_NET 4444 (msg:"ET MALWARE Metasploit Default Port C2 Beacon"; classtype:trojan-activity; sid:1000071; rev:1;)

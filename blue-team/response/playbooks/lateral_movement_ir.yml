@@ -1,0 +1,51 @@
+name: Lateral Movement Incident Response
+incident_type: lateral_movement
+severity: critical
+sla_minutes: 30
+mitre_techniques:
+  - T1550.002  # Pass the Hash
+  - T1563.001  # SSH Hijacking
+references:
+  - https://attack.mitre.org/techniques/T1550/002/
+
+steps:
+  - name: "Identify source and destination of lateral movement"
+    action: log
+    message: "Mapping internal connections from Zeek and Suricata alerts"
+    required: true
+
+  - name: "Isolate compromised pivot host"
+    action: run_script
+    script: isolate_host.sh
+    args: ["{pivot_host}"]
+    required: true
+
+  - name: "Block attacker source IP"
+    action: run_script
+    script: block_ip.sh
+    args: ["{attacker_ip}"]
+    required: true
+
+  - name: "Identify all systems accessed from pivot"
+    action: log
+    message: "Enumerating all internal connections originating from pivot host"
+    required: true
+
+  - name: "Collect forensic artifacts from pivot host"
+    action: collect_evidence
+    required: false
+
+  - name: "Invalidate all active sessions and credentials"
+    action: log
+    message: "Forcing re-authentication across all potentially compromised accounts"
+    required: true
+
+  - name: "Audit SSH authorized_keys across all systems"
+    action: log
+    message: "Scanning for unauthorized SSH keys planted by attacker"
+    required: false
+
+  - name: "Notify CISO and management"
+    action: notify
+    message: "CRITICAL: Lateral movement detected. Pivot host isolated. Credentials reset."
+    required: false

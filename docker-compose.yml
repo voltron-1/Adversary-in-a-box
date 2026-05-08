@@ -1,0 +1,212 @@
+version: "3.9"
+
+# =============================================================================
+# Adversary-in-a-Box — Docker Compose
+# Orchestrates: Red Team | Blue Team | Target Env | ELK SIEM | Forensic Board
+# =============================================================================
+
+networks:
+  lab-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+volumes:
+  es-data:
+  kibana-data:
+  evidence-data:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # RED TEAM — Kali-based attack container
+  # ---------------------------------------------------------------------------
+  red-team:
+    build: ./red-team
+    container_name: red-team
+    hostname: attacker
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.10
+    volumes:
+      - ./red-team:/app
+      - evidence-data:/evidence
+    environment:
+      - TARGET_WEB=${TARGET_WEB_URL:-http://172.20.0.30}
+      - TARGET_DB=${TARGET_DB_HOST:-172.20.0.31}
+      - TARGET_MAIL=${TARGET_MAIL_HOST:-172.20.0.32}
+      - SIEM_HOST=${SIEM_HOST:-172.20.0.50}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - victim-web
+      - victim-db
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # BLUE TEAM DASHBOARD — Flask alert & playbook UI
+  # ---------------------------------------------------------------------------
+  blue-team:
+    build: ./blue-team
+    container_name: blue-team
+    hostname: defender
+    ports:
+      - "5000:5000"
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.20
+    volumes:
+      - ./blue-team:/app
+      - evidence-data:/evidence
+    environment:
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://172.20.0.50:9200}
+      - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # TARGET ENVIRONMENT — Vulnerable victim services
+  # ---------------------------------------------------------------------------
+  victim-web:
+    build: ./target-env/victim-web
+    container_name: victim-web
+    hostname: victim-web
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.30
+    environment:
+      - DB_HOST=172.20.0.31
+      - DB_USER=${DB_USER:-admin}
+      - DB_PASS=${DB_PASS:-password123}
+      - DB_NAME=${DB_NAME:-labdb}
+    depends_on:
+      - victim-db
+    restart: unless-stopped
+
+  victim-db:
+    build: ./target-env/victim-db
+    container_name: victim-db
+    hostname: victim-db
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.31
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS:-root}
+      - MYSQL_DATABASE=${DB_NAME:-labdb}
+      - MYSQL_USER=${DB_USER:-admin}
+      - MYSQL_PASSWORD=${DB_PASS:-password123}
+    restart: unless-stopped
+
+  victim-mail:
+    build: ./target-env/victim-mail
+    container_name: victim-mail
+    hostname: victim-mail
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.32
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # SURICATA IDS — Inline network sensor
+  # ---------------------------------------------------------------------------
+  suricata:
+    image: jasonish/suricata:latest
+    container_name: suricata
+    hostname: suricata
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    volumes:
+      - ./blue-team/detection/suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
+      - ./blue-team/detection/suricata/local.rules:/etc/suricata/rules/local.rules:ro
+      - /var/log/suricata:/var/log/suricata
+    command: -i eth0 --pidfile /var/run/suricata.pid
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # ELK SIEM — Elasticsearch + Logstash + Kibana
+  # ---------------------------------------------------------------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: elasticsearch
+    hostname: elasticsearch
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.50
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+      - ./siem/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: unless-stopped
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.0
+    container_name: logstash
+    hostname: logstash
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.51
+    volumes:
+      - ./siem/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./siem/logstash/pipelines:/usr/share/logstash/pipeline:ro
+      - /var/log/suricata:/suricata-logs:ro
+      - /var/log/zeek:/zeek-logs:ro
+    environment:
+      - LS_JAVA_OPTS=-Xms512m -Xmx512m
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: kibana
+    hostname: kibana
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.52
+    ports:
+      - "5601:5601"
+    volumes:
+      - ./siem/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+      - kibana-data:/usr/share/kibana/data
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # FORENSIC SCOREBOARD — Tracks red/blue team scores
+  # ---------------------------------------------------------------------------
+  scoreboard:
+    build:
+      context: ./forensics/scoreboard
+    container_name: scoreboard
+    hostname: scoreboard
+    ports:
+      - "5002:5002"
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.60
+    volumes:
+      - evidence-data:/evidence
+      - ./forensics:/app/forensics
+    environment:
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://172.20.0.50:9200}
+      - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped

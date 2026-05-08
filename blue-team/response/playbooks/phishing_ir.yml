@@ -1,0 +1,49 @@
+name: Phishing Incident Response
+incident_type: phishing
+severity: high
+sla_minutes: 60
+mitre_techniques:
+  - T1566.001  # Spearphishing Attachment
+references:
+  - https://attack.mitre.org/techniques/T1566/001/
+
+steps:
+  - name: "Identify phishing email indicators"
+    action: log
+    message: "Extracting sender, subject, attachment hash from SIEM alert"
+    required: true
+
+  - name: "Block sender domain and IP"
+    action: run_script
+    script: block_ip.sh
+    args: ["{attacker_ip}"]
+    required: true
+
+  - name: "Identify all recipients of phishing campaign"
+    action: log
+    message: "Querying mail logs for other recipients of same campaign"
+    required: true
+
+  - name: "Check for payload execution on victim hosts"
+    action: log
+    message: "Scanning endpoint logs for payload execution indicators"
+    required: true
+
+  - name: "Collect email headers and attachment as evidence"
+    action: collect_evidence
+    required: false
+
+  - name: "Notify affected users"
+    action: notify
+    message: "Phishing email detected. Users notified to delete and report suspicious email."
+    required: false
+
+  - name: "Reset credentials if account compromise suspected"
+    action: log
+    message: "Forcing password reset for accounts that interacted with phishing email"
+    required: false
+
+  - name: "Update email filter rules"
+    action: log
+    message: "Adding phishing indicators to email gateway blocklist"
+    required: false

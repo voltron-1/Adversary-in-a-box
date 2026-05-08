@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Team Dashboard — Adversary-in-a-Box</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="shield">🛡️</span>
+            <span>Blue Team SOC</span>
+            <span class="lab-badge">LAB</span>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="active">Dashboard</a>
+            <a href="/alerts">Alerts</a>
+            <a href="/playbooks">Playbooks</a>
+            <a href="http://localhost:5601" target="_blank">Kibana →</a>
+            <a href="http://localhost:5002" target="_blank">Scoreboard →</a>
+        </div>
+        <div class="nav-time">{{ now }}</div>
+    </nav>
+
+    <main class="container">
+        <h1 class="page-title">🔵 Live Operations Dashboard</h1>
+        <p class="subtitle">Adversary-in-a-Box | CompTIA Security+ SY0-701 Lab</p>
+
+        <!-- Stats Row -->
+        <div class="stats-grid">
+            <div class="stat-card critical">
+                <div class="stat-number">{{ stats.critical }}</div>
+                <div class="stat-label">Critical Alerts</div>
+            </div>
+            <div class="stat-card high">
+                <div class="stat-number">{{ stats.high }}</div>
+                <div class="stat-label">High Alerts</div>
+            </div>
+            <div class="stat-card total">
+                <div class="stat-number">{{ stats.total }}</div>
+                <div class="stat-label">Total Events</div>
+            </div>
+            <div class="stat-card open">
+                <div class="stat-number">{{ stats.open }}</div>
+                <div class="stat-label">Open Incidents</div>
+            </div>
+        </div>
+
+        <!-- Recent Alerts -->
+        <section class="card">
+            <div class="card-header">
+                <h2>⚠️ Recent Alerts</h2>
+                <a href="/alerts" class="btn btn-sm">View All</a>
+            </div>
+            <table class="alert-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Severity</th>
+                        <th>Technique</th>
+                        <th>Alert</th>
+                        <th>Source</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for alert in alerts %}
+                    <tr>
+                        <td class="monospace">{{ alert.timestamp }}</td>
+                        <td><span class="badge badge-{{ alert.severity }}">{{ alert.severity }}</span></td>
+                        <td class="technique-id">
+                            <a href="https://attack.mitre.org/techniques/{{ alert.technique.replace('.', '/') }}/" target="_blank">
+                                {{ alert.technique }}
+                            </a>
+                        </td>
+                        <td>{{ alert.name }}</td>
+                        <td class="monospace">{{ alert.src_ip }}</td>
+                        <td><span class="status status-{{ alert.status }}">{{ alert.status }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Quick Actions -->
+        <section class="card">
+            <div class="card-header"><h2>⚡ Quick Response</h2></div>
+            <div class="quick-actions">
+                <a href="/playbooks" class="action-btn">📋 Run IR Playbook</a>
+                <a href="http://localhost:5601" target="_blank" class="action-btn">📊 Open Kibana SIEM</a>
+                <a href="http://localhost:5002" target="_blank" class="action-btn">🏆 View Scoreboard</a>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Auto-refresh stats every 30 seconds
+        setInterval(() => {
+            fetch('/api/stats').then(r => r.json()).then(data => {
+                document.querySelector('.stat-card.critical .stat-number').textContent = data.critical;
+                document.querySelector('.stat-card.high .stat-number').textContent = data.high;
+                document.querySelector('.stat-card.total .stat-number').textContent = data.total_alerts;
+                document.querySelector('.stat-card.open .stat-number').textContent = data.open;
+            }).catch(() => {});
+        }, 30000);
+    </script>
+</body>
+</html>
