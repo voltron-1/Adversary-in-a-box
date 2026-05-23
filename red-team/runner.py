@@ -104,15 +104,8 @@ def print_banner():
     console.print(Panel(banner, border_style="red"))
 
 
-@click.group()
-def cli():
-    """Adversary-in-a-Box Red Team Campaign Launcher"""
-    pass
-
-
-@cli.command("list")
 def list_campaigns():
-    """List all available campaigns and techniques."""
+    """Render the available-campaigns table."""
     print_banner()
     table = Table(title="Available Campaigns", border_style="red", header_style="bold red")
     table.add_column("Campaign", style="cyan", no_wrap=True)
@@ -130,16 +123,10 @@ def list_campaigns():
     console.print(table)
 
 
-@cli.command("run")
-@click.option("--campaign", "-c", default=None, help="Campaign name to run")
-@click.option("--technique", "-t", default=None, help="MITRE ATT&CK technique ID (e.g., T1566.001)")
-@click.option("--target", default=None, help="Override target IP/hostname")
-@click.option("--dry-run", is_flag=True, help="Simulate campaign without executing")
 def run_campaign(campaign, technique, target, dry_run):
     """Run a red team campaign or specific MITRE technique."""
     print_banner()
 
-    # Resolve technique to campaign name
     if technique and not campaign:
         campaign = TECHNIQUE_MAP.get(technique)
         if not campaign:
@@ -151,7 +138,7 @@ def run_campaign(campaign, technique, target, dry_run):
         sys.exit(1)
 
     if campaign not in CAMPAIGNS:
-        console.print(f"[red]Unknown campaign: {campaign}. Run 'runner.py list' to see options.[/red]")
+        console.print(f"[red]Unknown campaign: {campaign}. Run 'runner.py --list' to see options.[/red]")
         sys.exit(1)
 
     cfg = CAMPAIGNS[campaign]
@@ -210,19 +197,18 @@ def _run_full_killchain(target_override=None):
     console.print("\n[bold red]💀 Full kill chain complete.[/bold red]")
 
 
-# Support `python runner.py --campaign X` syntax (not just subcommand)
-@click.command()
-@click.option("--list", "show_list", is_flag=True, help="List campaigns")
-@click.option("--campaign", "-c", default=None)
-@click.option("--technique", "-t", default=None)
-@click.option("--target", default=None)
-@click.option("--dry-run", is_flag=True)
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option("--list", "show_list", is_flag=True, help="List available campaigns and exit.")
+@click.option("--campaign", "-c", default=None, help="Campaign name to run (e.g. phishing, recon).")
+@click.option("--technique", "-t", default=None, help="MITRE ATT&CK technique ID (e.g., T1566.001).")
+@click.option("--target", default=None, help="Override target IP/hostname.")
+@click.option("--dry-run", is_flag=True, help="Simulate campaign without executing actions.")
 def main(show_list, campaign, technique, target, dry_run):
+    """Adversary-in-a-Box red team campaign launcher."""
     if show_list:
-        list_campaigns.invoke(click.Context(list_campaigns))
-    else:
-        ctx = click.Context(run_campaign)
-        ctx.invoke(run_campaign, campaign=campaign, technique=technique, target=target, dry_run=dry_run)
+        list_campaigns()
+        return
+    run_campaign(campaign, technique, target, dry_run)
 
 
 if __name__ == "__main__":
