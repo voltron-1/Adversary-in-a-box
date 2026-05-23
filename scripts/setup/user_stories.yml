@@ -1,0 +1,290 @@
+# Adversary-in-a-Box — Project Board Source of Truth
+#
+# Consumed by scripts/setup/setup_project_board.sh to (re)build:
+#   - GitHub labels
+#   - 6 milestones aligned to ADR 0001 (M1..M6)
+#   - User Story issues (label: user-story) carrying points + AC
+#   - Task issues (label: task) linked back via "Tracked by #<story>"
+#   - A Project v2 board with Backlog / In Progress / In Review / Done
+#
+# Acceptance criteria for OQ-bound stories are lifted verbatim from
+# docs/ADRs/0001-open-question-resolutions.md.
+
+labels:
+  type:
+    - {name: user-story, color: "0E8A16", description: "Top-level epic/story"}
+    - {name: task,       color: "1D76DB", description: "Implementation unit under a story"}
+  team:
+    - {name: red-team,  color: "B60205", description: "Adversary emulation"}
+    - {name: blue-team, color: "1F6FEB", description: "Detection & response"}
+    - {name: pki,       color: "5319E7", description: "PKI / TLS hardening lab"}
+    - {name: siem,      color: "FBCA04", description: "ELK / Sigma / Suricata"}
+    - {name: forensics, color: "0052CC", description: "Scoring & chain of custody"}
+  points:
+    - {name: "points/1",  color: "C2E0C6"}
+    - {name: "points/2",  color: "C2E0C6"}
+    - {name: "points/3",  color: "C2E0C6"}
+    - {name: "points/5",  color: "C2E0C6"}
+    - {name: "points/8",  color: "C2E0C6"}
+    - {name: "points/13", color: "C2E0C6"}
+  size:
+    - {name: "size/XS", color: "EDEDED", description: "<= 1h"}
+    - {name: "size/S",  color: "EDEDED", description: "<= 1d"}
+    - {name: "size/M",  color: "EDEDED", description: "1-3d"}
+    - {name: "size/L",  color: "EDEDED", description: "3-5d"}
+    - {name: "size/XL", color: "EDEDED", description: "> 5d"}
+
+milestones:
+  - {number: 1, title: "M1 — Project Setup",         description: "Repo scaffolding, compose orchestration, environment config, baseline docs."}
+  - {number: 2, title: "M2 — Base Infrastructure",   description: "Red-team campaigns, target-env victims, MITRE tagging, safe-payload contract (OQ-1)."}
+  - {number: 3, title: "M3 — Detection",             description: "Suricata + Zeek + ELK stack, Sigma→EQL compile pipeline (OQ-2)."}
+  - {number: 4, title: "M4 — IR Automation",         description: "Playbook engine, response actions, quarantine-network containment (OQ-3)."}
+  - {number: 5, title: "M5 — PKI",                   description: "TLS hardening lab folded into compose under the `pki` profile (OQ-4)."}
+  - {number: 6, title: "M6 — Scoring & Forensics",   description: "Scoreboard MTTD/MTTA tiered scoring (OQ-5), evidence + chain of custody."}
+
+stories:
+  # =========================================================================
+  # M1 — Project Setup
+  # =========================================================================
+  - id: US-1.1
+    title: "Repo scaffold + Docker Compose orchestration"
+    milestone: 1
+    points: 5
+    labels: [user-story]
+    acceptance_criteria: |
+      `docker compose config --quiet` passes. All services (red-team, blue-team,
+      victim-web/db/mail, suricata, elasticsearch, logstash, kibana, scoreboard)
+      come up on `lab-net`. `.env.example` documents every variable referenced
+      in compose.
+    tasks:
+      - {title: "Verify docker-compose.yml services & networks",      size: S}
+      - {title: "Backfill .env.example with all referenced vars",     size: XS}
+      - {title: "Add make/up/down helper scripts (optional)",          size: XS}
+
+  - id: US-1.2
+    title: "GitHub Project Board automation"
+    milestone: 1
+    points: 5
+    labels: [user-story]
+    acceptance_criteria: |
+      `scripts/setup/setup_project_board.sh` is idempotent and rebuilds labels,
+      6 milestones, user stories + tasks, and the Project v2 board from
+      `user_stories.yml`. A paired `teardown_project_board.sh` exists.
+      README documents run order and required `gh` scopes.
+    tasks:
+      - {title: "Write setup_project_board.sh (idempotent gh CLI)",   size: M}
+      - {title: "Write teardown_project_board.sh",                     size: S}
+      - {title: "Write scripts/setup/README.md",                       size: XS}
+
+  # =========================================================================
+  # M2 — Base Infrastructure
+  # =========================================================================
+  - id: US-2.1
+    title: "Red-team runner & campaign registry"
+    milestone: 2
+    points: 3
+    labels: [user-story, red-team]
+    acceptance_criteria: |
+      `docker compose exec red-team python runner.py --list` enumerates every
+      campaign under `red-team/campaigns/`. Each campaign inherits
+      `BaseCampaign` and is tagged with its MITRE technique ID.
+    tasks:
+      - {title: "Audit campaign registry against MITRE tagger",        size: S}
+      - {title: "Add runner.py --list and --dry-run subcommands",      size: S}
+
+  - id: US-2.2
+    title: "Initial-access campaigns (vuln scan + web exploit)"
+    milestone: 2
+    points: 3
+    labels: [user-story, red-team]
+    acceptance_criteria: |
+      `vuln_scan.py` enumerates open ports on victim-web; `exploit_web.py`
+      triggers a benign signature against the victim's vulnerable endpoint.
+      Both emit MITRE-tagged JSON events to the SIEM ingest channel.
+    tasks: []
+
+  - id: US-2.3
+    title: "Persistence campaigns (cron + ssh key plant)"
+    milestone: 2
+    points: 2
+    labels: [user-story, red-team]
+    acceptance_criteria: |
+      Both campaigns register self-cleaning hooks. Cron entry uses
+      `echo adversary-in-a-box`; SSH key uses the test-key marker from ADR OQ-1.
+    tasks: []
+
+  - id: US-2.4
+    title: "Lateral movement + exfiltration campaigns"
+    milestone: 2
+    points: 3
+    labels: [user-story, red-team]
+    acceptance_criteria: |
+      `pass_the_hash.py`, `ssh_hijack.py`, `dns_tunnel.py`, `https_exfil.py`
+      use only benign markers (per ADR OQ-1 payload table). No external IPs
+      are reachable from `lab-net`.
+    tasks: []
+
+  - id: US-2.5
+    title: "Payload safety contract (OQ-1)"
+    milestone: 2
+    points: 5
+    labels: [user-story, red-team]
+    acceptance_criteria: |
+      `payload_gen.py --dry-run` prints a step-by-step plan for every campaign
+      without executing. All payloads produce behavioral signatures only.
+      `lab-net` is declared `internal: true` in `docker-compose.yml`, blocking
+      all external egress. `LICENSE` includes an educational-use disclaimer.
+    tasks:
+      - {title: "Add internal: true to lab-net",                       size: XS}
+      - {title: "Implement --dry-run in payload_gen.py",               size: S}
+      - {title: "Add educational-use disclaimer to LICENSE + README",  size: XS}
+      - {title: "Register self-cleaning hooks per campaign",           size: M}
+
+  # =========================================================================
+  # M3 — Detection
+  # =========================================================================
+  - id: US-3.1
+    title: "ELK SIEM stack + Logstash pipelines"
+    milestone: 3
+    points: 5
+    labels: [user-story, blue-team, siem]
+    acceptance_criteria: |
+      Elasticsearch + Logstash + Kibana come up healthy. Logstash ingests
+      Suricata eve.json and Zeek logs into per-source indices. Kibana data
+      view exists for each.
+    tasks: []
+
+  - id: US-3.2
+    title: "Suricata + Zeek detection content"
+    milestone: 3
+    points: 3
+    labels: [user-story, blue-team, siem]
+    acceptance_criteria: |
+      `blue-team/detection/suricata/local.rules` catches the lab's port-scan
+      and exfil patterns. `blue-team/detection/zeek/scripts/` covers DNS
+      exfil, lateral movement, and port scans.
+    tasks: []
+
+  - id: US-3.3
+    title: "Sigma → EQL compile pipeline (OQ-2)"
+    milestone: 3
+    points: 5
+    labels: [user-story, blue-team, siem]
+    acceptance_criteria: |
+      `sigma-cli` and `pySigma-backend-elasticsearch` are listed in
+      `requirements.txt`. A `make compile-sigma` or equivalent script
+      converts all `.yml` rules to EQL and imports them into Kibana via the
+      Detection Rules API. Each rule fires within 60 seconds of the matching
+      red team event. Source `.yml` files are committed; compiled `.json`
+      files are in `compiled/` (optionally gitignored).
+    tasks:
+      - {title: "Add sigma-cli + pySigma backend to requirements.txt", size: XS}
+      - {title: "Write scripts/setup/compile_sigma.sh",                size: S}
+      - {title: "gitignore blue-team/detection/sigma/compiled/",       size: XS}
+      - {title: "Verify each rule fires <60s in Kibana",               size: M}
+
+  # =========================================================================
+  # M4 — IR Automation
+  # =========================================================================
+  - id: US-4.1
+    title: "Playbook engine + dashboard"
+    milestone: 4
+    points: 5
+    labels: [user-story, blue-team]
+    acceptance_criteria: |
+      `playbook_engine.py` parses YAML playbooks, dispatches each action, logs
+      per-step outcomes. The Flask dashboard shows playbook status and
+      recent alerts.
+    tasks: []
+
+  - id: US-4.2
+    title: "Per-scenario IR playbooks"
+    milestone: 4
+    points: 3
+    labels: [user-story, blue-team]
+    acceptance_criteria: |
+      `phishing_ir.yml`, `lateral_movement_ir.yml`, `data_exfil_ir.yml`,
+      `ransomware_ir.yml` each run to completion against their target
+      scenarios with no failed steps.
+    tasks: []
+
+  - id: US-4.3
+    title: "Quarantine-network containment (OQ-3)"
+    milestone: 4
+    points: 5
+    labels: [user-story, blue-team]
+    acceptance_criteria: |
+      `isolate_host.sh <container>` disconnects the target from `lab-net` and
+      connects it to `quarantine-net`. Other containers on `lab-net` are
+      unaffected. A paired `restore_host.sh <container>` script reconnects
+      the target to `lab-net`. `collect_evidence.py` can reach the isolated
+      container via `quarantine-net`. All IR playbooks that call
+      `isolate_host.sh` must include a `restore_host.sh` step as the final
+      playbook action.
+    tasks:
+      - {title: "Declare quarantine-net (internal) in compose",        size: XS}
+      - {title: "Rewrite isolate_host.sh to swap networks",            size: S}
+      - {title: "Add restore_host.sh",                                  size: XS}
+      - {title: "Append restore step to lateral_movement_ir.yml",      size: XS}
+
+  # =========================================================================
+  # M5 — PKI
+  # =========================================================================
+  - id: US-5.1
+    title: "PKI lab under compose profile (OQ-4)"
+    milestone: 5
+    points: 3
+    labels: [user-story, pki]
+    acceptance_criteria: |
+      `pki-lab/` services are defined in the main `docker-compose.yml` under
+      the `pki` profile. Running `docker compose --profile pki up -d` starts
+      the PKI containers on `lab-net`. Running `docker compose up -d` (no
+      profile) does NOT start PKI containers. `setup_ca.sh` and
+      `issue_cert.sh` are executable via `docker compose exec pki-ca`.
+    tasks:
+      - {title: "Add pki-nginx + pki-ca services under profiles:[pki]", size: S}
+      - {title: "Verify docker compose --profile pki config",           size: XS}
+
+  - id: US-5.2
+    title: "PKI exercises (CA, issue/revoke, pinning)"
+    milestone: 5
+    points: 2
+    labels: [user-story, pki]
+    acceptance_criteria: |
+      Three exercise markdowns walk through CA setup, issue/revoke, and
+      pinning/stapling. `cipher_audit.py` scans the nginx TLS endpoint and
+      flags weak ciphers.
+    tasks: []
+
+  # =========================================================================
+  # M6 — Scoring & Forensics
+  # =========================================================================
+  - id: US-6.1
+    title: "MTTD/MTTA tiered scoring (OQ-5)"
+    milestone: 6
+    points: 5
+    labels: [user-story, forensics]
+    acceptance_criteria: |
+      `scorer.py` computes detection score using MTTD thresholds
+      (Gold/Silver/Bronze/Miss) and response score using MTTA thresholds.
+      Both scores are displayed separately on the scoreboard. False positive
+      alerts deduct 5 points each. Evidence archives with valid SHA-256
+      manifests award +10 points. Final score = (detection score × 0.5) +
+      (response score × 0.5). All thresholds are configurable via environment
+      variables (not hardcoded) so instructors can adjust difficulty.
+    tasks:
+      - {title: "Implement score_tier() with env-driven thresholds",   size: S}
+      - {title: "Update scoreboard.html to show both scores",          size: XS}
+      - {title: "Add threshold defaults to .env.example",              size: XS}
+      - {title: "tests/test_scorer.py covering 4 tiers x 2 axes",      size: S}
+
+  - id: US-6.2
+    title: "Chain of custody + evidence manifests"
+    milestone: 6
+    points: 3
+    labels: [user-story, forensics]
+    acceptance_criteria: |
+      `chain_of_custody.py` writes SHA-256 manifests for each evidence bundle
+      under `evidence/`. Manifest is verifiable on replay. `+10` bonus fires
+      when a valid manifest is present.
+    tasks: []
