@@ -219,3 +219,16 @@ __marimo__/
 
 # OQ-2 (ADR 0001): compiled Sigma rules are build artifacts
 blue-team/detection/sigma/compiled/
+
+# OQ-4 (ADR 0001): never commit lab CA material or issued certs/keys.
+# Tracked artifacts under pki-lab/certs/ are limited to .gitkeep and README.md.
+pki-lab/certs/*
+!pki-lab/certs/.gitkeep
+!pki-lab/certs/README.md
+pki-lab/ca/
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx

@@ -1,7 +1,19 @@
 # =============================================================================
 # Adversary-in-a-Box — Docker Compose
 # Orchestrates: Red Team | Blue Team | Target Env | ELK SIEM | Forensic Board
+#
+# Phase 0 — Per-student isolation:
+#   - The project name (COMPOSE_PROJECT_NAME) prefixes every container and
+#     network, so two students on the same host do not collide.
+#   - Service-to-service DNS still uses the bare service name (red-team,
+#     victim-web, etc.) — internal references do not change.
+#   - All host-port bindings and the lab subnet are parameterized via .env
+#     so per-student stacks can run side-by-side.
+#   - Helper: `scripts/lab/student-env.sh <student-id>` generates a ready-to-use
+#     .env from the active student id.
 # =============================================================================
+
+name: ${COMPOSE_PROJECT_NAME:-adversary-in-a-box}
 
 networks:
   lab-net:
@@ -9,13 +21,13 @@ networks:
     internal: true            # OQ-1: block external egress; lab traffic stays in-band
     ipam:
       config:
-        - subnet: 172.20.0.0/24
+        - subnet: ${LAB_NET_PREFIX:-172.20.0}.0/24
   quarantine-net:
     driver: bridge
     internal: true            # OQ-3: forensic-only channel for isolated hosts
     ipam:
       config:
-        - subnet: 172.20.1.0/24
+        - subnet: ${QUARANTINE_NET_PREFIX:-172.20.1}.0/24
 
 volumes:
   es-data:
@@ -29,19 +41,18 @@ services:
   # ---------------------------------------------------------------------------
   red-team:
     build: ./red-team
-    container_name: red-team
     hostname: attacker
     networks:
       lab-net:
-        ipv4_address: 172.20.0.10
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.10
     volumes:
       - ./red-team:/app
       - evidence-data:/evidence
     environment:
-      - TARGET_WEB=${TARGET_WEB_URL:-http://172.20.0.30}
-      - TARGET_DB=${TARGET_DB_HOST:-172.20.0.31}
-      - TARGET_MAIL=${TARGET_MAIL_HOST:-172.20.0.32}
-      - SIEM_HOST=${SIEM_HOST:-172.20.0.50}
+      - TARGET_WEB=${TARGET_WEB_URL:-http://victim-web}
+      - TARGET_DB=${TARGET_DB_HOST:-victim-db}
+      - TARGET_MAIL=${TARGET_MAIL_HOST:-victim-mail}
+      - SIEM_HOST=${SIEM_HOST:-elasticsearch}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - victim-web
@@ -55,22 +66,32 @@ services:
   # ---------------------------------------------------------------------------
   blue-team:
     build: ./blue-team
-    container_name: blue-team
     hostname: defender
     ports:
-      - "5000:5000"
+      - "${BLUE_TEAM_PORT:-5000}:5000"
     networks:
       lab-net:
-        ipv4_address: 172.20.0.20
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.20
       quarantine-net:                # OQ-3: forensic channel reaches isolated hosts
-        ipv4_address: 172.20.1.20
+        ipv4_address: ${QUARANTINE_NET_PREFIX:-172.20.1}.20
     volumes:
       - ./blue-team:/app
       - evidence-data:/evidence
+      # OQ-3: isolate_host.sh / restore_host.sh and block_ip.sh call the Docker
+      # daemon and iptables on the host. The socket mount lets the playbook
+      # engine move containers between lab-net and quarantine-net.
+      - /var/run/docker.sock:/var/run/docker.sock
+    cap_add:
+      # block_ip.sh manipulates iptables inside the blue-team container.
+      - NET_ADMIN
     environment:
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://172.20.0.50:9200}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://elasticsearch:9200}
       - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Compose project name surfaces inside containers so IR scripts can build
+      # network names like ${LAB_NET} = "<project>_lab-net".
+      - LAB_NET=${COMPOSE_PROJECT_NAME:-adversary-in-a-box}_lab-net
+      - QUARANTINE_NET=${COMPOSE_PROJECT_NAME:-adversary-in-a-box}_quarantine-net
     depends_on:
       - elasticsearch
     restart: unless-stopped
@@ -80,13 +101,12 @@ services:
   # ---------------------------------------------------------------------------
   victim-web:
     build: ./target-env/victim-web
-    container_name: victim-web
     hostname: victim-web
     networks:
       lab-net:
-        ipv4_address: 172.20.0.30
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.30
     environment:
-      - DB_HOST=172.20.0.31
+      - DB_HOST=${TARGET_DB_HOST:-victim-db}
       - DB_USER=${DB_USER:-admin}
       - DB_PASS=${DB_PASS:-password123}
       - DB_NAME=${DB_NAME:-labdb}
@@ -96,11 +116,10 @@ services:
 
   victim-db:
     build: ./target-env/victim-db
-    container_name: victim-db
     hostname: victim-db
     networks:
       lab-net:
-        ipv4_address: 172.20.0.31
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.31
     environment:
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS:-root}
       - MYSQL_DATABASE=${DB_NAME:-labdb}
@@ -110,19 +129,22 @@ services:
 
   victim-mail:
     build: ./target-env/victim-mail
-    container_name: victim-mail
     hostname: victim-mail
     networks:
       lab-net:
-        ipv4_address: 172.20.0.32
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.32
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # SURICATA IDS — Inline network sensor
+  #
+  # Suricata remains on host networking by design: it is the *instructor-side*
+  # sensor (conceptually part of Phase 4 monitoring), not student-executed
+  # code. The Phase 0 air-gap guarantee applies to traffic originating in
+  # student-attacker containers (verified by scripts/safety/egress_test.sh).
   # ---------------------------------------------------------------------------
   suricata:
     image: jasonish/suricata:latest
-    container_name: suricata
     hostname: suricata
     network_mode: "host"
     cap_add:
@@ -133,7 +155,7 @@ services:
       - ./blue-team/detection/suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
       - ./blue-team/detection/suricata/local.rules:/etc/suricata/rules/local.rules:ro
       - /var/log/suricata:/var/log/suricata
-    command: -i eth0 --pidfile /var/run/suricata.pid
+    command: -i ${SURICATA_IFACE:-eth0} --pidfile /var/run/suricata.pid
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -141,13 +163,12 @@ services:
   # ---------------------------------------------------------------------------
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
-    container_name: elasticsearch
     hostname: elasticsearch
     networks:
       lab-net:
-        ipv4_address: 172.20.0.50
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.50
     ports:
-      - "9200:9200"
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
     volumes:
       - es-data:/usr/share/elasticsearch/data
       - ./siem/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
@@ -163,11 +184,10 @@ services:
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.0
-    container_name: logstash
     hostname: logstash
     networks:
       lab-net:
-        ipv4_address: 172.20.0.51
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.51
     volumes:
       - ./siem/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./siem/logstash/pipelines:/usr/share/logstash/pipeline:ro
@@ -181,13 +201,12 @@ services:
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.0
-    container_name: kibana
     hostname: kibana
     networks:
       lab-net:
-        ipv4_address: 172.20.0.52
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.52
     ports:
-      - "5601:5601"
+      - "${KIBANA_PORT:-5601}:5601"
     volumes:
       - ./siem/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
       - kibana-data:/usr/share/kibana/data
@@ -201,18 +220,17 @@ services:
   scoreboard:
     build:
       context: ./forensics/scoreboard
-    container_name: scoreboard
     hostname: scoreboard
     ports:
-      - "5002:5002"
+      - "${SCOREBOARD_PORT:-5002}:5002"
     networks:
       lab-net:
-        ipv4_address: 172.20.0.60
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.60
     volumes:
       - evidence-data:/evidence
       - ./forensics:/app/forensics
     environment:
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://172.20.0.50:9200}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://elasticsearch:9200}
       - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}
     depends_on:
       - elasticsearch
@@ -223,27 +241,27 @@ services:
   # ---------------------------------------------------------------------------
   pki-nginx:
     build: ./pki-lab/tls_hardening
-    container_name: pki-nginx
     hostname: pki-nginx
     profiles: ["pki"]
     networks:
       lab-net:
-        ipv4_address: 172.20.0.70
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.70
     ports:
-      - "8443:443"
+      - "${PKI_NGINX_PORT:-8443}:443"
     volumes:
-      - ./pki-lab/tls_hardening/nginx-tls.conf:/etc/nginx/nginx.conf:ro
-      - ./pki-lab/certs:/etc/nginx/certs:ro
+      # Mount as a conf.d snippet so the stock nginx.conf wraps it in events{}/http{}.
+      - ./pki-lab/tls_hardening/nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro
+      # Cert path matches the ssl_certificate_* directives in nginx-tls.conf.
+      - ./pki-lab/certs:/etc/nginx/ssl:ro
     restart: unless-stopped
 
   pki-ca:
     image: alpine/openssl
-    container_name: pki-ca
     hostname: pki-ca
     profiles: ["pki"]
     networks:
       lab-net:
-        ipv4_address: 172.20.0.71
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.71
     volumes:
       - ./pki-lab:/workspace
     working_dir: /workspace
