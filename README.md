@@ -9,6 +9,21 @@
 
 ---
 
+## Project Mission Statement
+
+**Organization Type:** Fictional Enterprise / Managed Service Provider  
+**Security Challenge:** The organization is vulnerable to advanced persistent threats, including credential theft, lateral movement, and data exfiltration.  
+**Demonstration:** We will replicate a multi-tiered enterprise environment (web servers, databases, endpoints) and execute a full kill-chain attack (reconnaissance, initial access, privilege escalation, lateral movement, exfiltration).  
+**Defense:** We will protect the environment by deploying a centralized SIEM (ELK/Wazuh), configuring network intrusion detection (Suricata/Zeek), and implementing incident response playbooks.  
+**Verification:** Effectiveness will be verified by running automated Red Team campaigns and validating that alerts are triggered in the SIEM and IR playbooks successfully block the attacks.  
+
+**Course Modules Integrated:**
+- Module 2: Pervasive Attack Surfaces and Controls (Threats, Vulns & Mitigations)
+- Module 5: Endpoint Vulnerabilities, Attacks, and Defenses
+- Module 8: Infrastructure Threats and Security Monitoring
+
+---
+
 ## Overview
 
 **Adversary-in-a-Box** is a self-contained, Docker-based cybersecurity lab that lets you practice both sides of the attack/defend cycle. The red team runs scripted MITRE ATT&CK campaigns against a realistic target environment; the blue team deploys IDS rules, SIEM correlation logic, and automated incident response playbooks. A shared forensic dashboard scores both teams and generates after-action reports.
