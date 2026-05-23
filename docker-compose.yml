@@ -1,5 +1,3 @@
-version: "3.9"
-
 # =============================================================================
 # Adversary-in-a-Box — Docker Compose
 # Orchestrates: Red Team | Blue Team | Target Env | ELK SIEM | Forensic Board
@@ -8,9 +6,16 @@ version: "3.9"
 networks:
   lab-net:
     driver: bridge
+    internal: true            # OQ-1: block external egress; lab traffic stays in-band
     ipam:
       config:
         - subnet: 172.20.0.0/24
+  quarantine-net:
+    driver: bridge
+    internal: true            # OQ-3: forensic-only channel for isolated hosts
+    ipam:
+      config:
+        - subnet: 172.20.1.0/24
 
 volumes:
   es-data:
@@ -57,6 +62,8 @@ services:
     networks:
       lab-net:
         ipv4_address: 172.20.0.20
+      quarantine-net:                # OQ-3: forensic channel reaches isolated hosts
+        ipv4_address: 172.20.1.20
     volumes:
       - ./blue-team:/app
       - evidence-data:/evidence
@@ -209,4 +216,36 @@ services:
       - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}
     depends_on:
       - elasticsearch
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # PKI LAB (OQ-4) — opt-in via `docker compose --profile pki up -d`
+  # ---------------------------------------------------------------------------
+  pki-nginx:
+    build: ./pki-lab/tls_hardening
+    container_name: pki-nginx
+    hostname: pki-nginx
+    profiles: ["pki"]
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.70
+    ports:
+      - "8443:443"
+    volumes:
+      - ./pki-lab/tls_hardening/nginx-tls.conf:/etc/nginx/nginx.conf:ro
+      - ./pki-lab/certs:/etc/nginx/certs:ro
+    restart: unless-stopped
+
+  pki-ca:
+    image: alpine/openssl
+    container_name: pki-ca
+    hostname: pki-ca
+    profiles: ["pki"]
+    networks:
+      lab-net:
+        ipv4_address: 172.20.0.71
+    volumes:
+      - ./pki-lab:/workspace
+    working_dir: /workspace
+    entrypoint: ["/bin/sh", "-c", "tail -f /dev/null"]
     restart: unless-stopped

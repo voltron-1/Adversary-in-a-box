@@ -63,7 +63,17 @@
             <div class="team-card blue">
                 <div class="team-name">🔵 Blue Team</div>
                 <div class="team-score">{{ scores.blue_team.total }}</div>
-                <div class="team-label">Total Points</div>
+                <div class="team-label">Total Points (50/50 MTTD/MTTA)</div>
+                <div style="display:flex; gap:1rem; margin-top:1rem; font-family:'JetBrains Mono', monospace;">
+                    <div style="flex:1; padding:.5rem; border:1px solid var(--border); border-radius:8px;">
+                        <div style="font-size:.7rem; color:var(--muted);">MTTD · Detection</div>
+                        <div style="font-size:1.5rem; color:var(--blue);">{{ scores.blue_team.detection_score|default(0) }}</div>
+                    </div>
+                    <div style="flex:1; padding:.5rem; border:1px solid var(--border); border-radius:8px;">
+                        <div style="font-size:.7rem; color:var(--muted);">MTTA · Response</div>
+                        <div style="font-size:1.5rem; color:var(--blue);">{{ scores.blue_team.response_score|default(0) }}</div>
+                    </div>
+                </div>
             </div>
         </div>
 

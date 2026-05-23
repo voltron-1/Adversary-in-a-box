@@ -5,3 +5,6 @@ elasticsearch==8.13.0
 rich==13.7.1
 click==8.1.7
 python-dateutil==2.9.0
+# OQ-2 (ADR 0001): Sigma → EQL compile pipeline
+sigma-cli==1.0.4
+pySigma-backend-elasticsearch==1.1.7

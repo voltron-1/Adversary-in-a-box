@@ -49,3 +49,12 @@ steps:
     action: notify
     message: "CRITICAL: Lateral movement detected. Pivot host isolated. Credentials reset."
     required: false
+
+  # OQ-3 (ADR 0001): every playbook that isolates a host must restore it
+  # before the playbook terminates. Without this step the host stays on the
+  # quarantine network and forensic collection cannot continue normally.
+  - name: "Restore pivot host to lab-net"
+    action: run_script
+    script: restore_host.sh
+    args: ["{pivot_host}"]
+    required: true

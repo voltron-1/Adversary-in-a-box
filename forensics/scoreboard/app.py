@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request
 
+from scorer import Scorer  # OQ-5: MTTD/MTTA tiered scoring
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "scoreboard-secret")
 
@@ -72,23 +74,32 @@ def award_points():
 
 
 def _compute_scores() -> dict:
-    """Compute current scores with winner determination."""
-    red = SCORES["red_team"]["total"]
-    blue = SCORES["blue_team"]["total"]
+    """
+    Compute current scores via the MTTD/MTTA Scorer (OQ-5).
 
-    if red > blue:
-        winner = "red_team"
-    elif blue > red:
-        winner = "blue_team"
+    Manual /api/award adjustments are layered on top of the ES-derived score
+    so instructors can still hand-grade edge cases without bypassing the
+    automated tiering.
+    """
+    scores = Scorer().compute_final_scores()
+
+    manual_red  = SCORES["red_team"]["total"]
+    manual_blue = SCORES["blue_team"]["total"]
+    if manual_red:
+        scores["red_team"]["total"]  = round(scores["red_team"]["total"]  + manual_red, 1)
+        scores["red_team"]["history"].extend(SCORES["red_team"].get("history", []))
+    if manual_blue:
+        scores["blue_team"]["total"] = round(scores["blue_team"]["total"] + manual_blue, 1)
+        scores["blue_team"]["history"].extend(SCORES["blue_team"].get("history", []))
+
+    if scores["blue_team"]["total"] > scores["red_team"]["total"]:
+        scores["winner"] = "blue_team"
+    elif scores["red_team"]["total"] > scores["blue_team"]["total"]:
+        scores["winner"] = "red_team"
     else:
-        winner = "tie"
-
-    return {
-        "red_team": {"total": red, "history": SCORES["red_team"].get("history", [])},
-        "blue_team": {"total": blue, "history": SCORES["blue_team"].get("history", [])},
-        "winner": winner,
-        "last_updated": datetime.utcnow().isoformat(),
-    }
+        scores["winner"] = "tie"
+    scores["last_updated"] = datetime.utcnow().isoformat()
+    return scores
 
 
 if __name__ == "__main__":
