@@ -1,0 +1,64 @@
+name: Lab Validation
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: pip
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Each subproject ships its own requirements.txt. Aggregate them so
+        # one test runner can import any module under tests/.
+        for req in red-team/requirements.txt blue-team/requirements.txt \
+                   forensics/scoreboard/requirements.txt; do
+          if [ -f "$req" ]; then pip install -r "$req"; fi
+        done
+
+    - name: Validate Docker Compose (default profile)
+      run: docker compose config --quiet
+
+    - name: Validate Docker Compose (--profile pki)
+      run: docker compose --profile pki config --quiet
+
+    - name: ShellCheck lab scripts
+      uses: ludeeus/action-shellcheck@2.0.0
+      with:
+        scandir: ./scripts
+        severity: warning
+
+    - name: Run all tests
+      # Discover every test_*.py under tests/ — covers test_campaigns,
+      # test_playbooks, test_pki, and test_scorer (Gap #6 audit fix).
+      # EVIDENCE_DIR overridden so save_artifact() in BaseCampaign has a
+      # writable location on the bare runner (the default /evidence is only
+      # writable from inside the lab containers).
+      env:
+        EVIDENCE_DIR: ${{ runner.temp }}/evidence
+      run: |
+        mkdir -p "$EVIDENCE_DIR"
+        python -m unittest discover -s tests -v
+
+    - name: Smoke-test Sigma compile pipeline
+      # Compile every .yml in blue-team/detection/sigma/ to EQL JSON. Catches
+      # rule syntax regressions before they ship. REBASE=0 so we don't try to
+      # push to a non-existent Kibana from CI.
+      run: bash scripts/setup/compile_sigma.sh
