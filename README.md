@@ -160,8 +160,9 @@ adversary-in-a-box/
 │       └── static/
 │           └── style.css
 │
-├── target-env/
-│   ├── docker-compose.victims.yml
+├── target-env/                   # Victims are defined in the top-level
+│   │                             # docker-compose.yml; this dir only holds
+│   │                             # the per-victim build contexts.
 │   ├── victim-web/
 │   │   ├── Dockerfile            # Intentionally vulnerable web app
 │   │   └── app/                  # Flask app with OWASP Top 10 vulns
