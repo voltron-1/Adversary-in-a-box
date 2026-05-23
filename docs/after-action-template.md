@@ -86,7 +86,7 @@ _What data was accessed or exfiltrated? What systems were affected?_
 
 ## Evidence Artifacts
 
-All artifacts stored in `forensics/evidence/` and hashed via `chain_of_custody.py`.
+All artifacts stored in `evidence/` (bind-mounted into every container as `/evidence`) and hashed via `chain_of_custody.py`.
 
 | Artifact | Filename | SHA-256 Hash |
 |---|---|---|

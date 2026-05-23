@@ -85,8 +85,8 @@ bash pki-lab/issue_cert.sh victim-web 172.20.0.30
 
 **Steps:**
 1. Collect evidence from an attack run: `python blue-team/response/actions/collect_evidence.py`
-2. Hash all evidence files: `python forensics/chain_of_custody.py --hash-dir forensics/evidence/`
-3. Review the chain of custody log: `cat forensics/evidence/custody.json`
+2. Hash all evidence files: `python forensics/chain_of_custody.py --hash-dir evidence/`
+3. Review the chain of custody log: `cat evidence/custody.json`
 4. Simulate tampering: modify one file and re-run the hash check
 5. Observe the integrity failure alert
 

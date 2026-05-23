@@ -203,9 +203,11 @@ adversary-in-a-box/
 │   │   ├── scorer.py             # Computes red/blue team scores
 │   │   └── templates/
 │   │       └── scoreboard.html
-│   ├── evidence/
-│   │   └── .gitkeep              # Evidence artifacts stored here
 │   └── chain_of_custody.py       # SHA-256 hashes all evidence files
+│
+├── evidence/                     # Bind-mounted into every container as /evidence.
+│                                 # Playbook output, screenshots, manifests all
+│                                 # land here. Only .gitkeep / README.md tracked.
 │
 └── tests/
     ├── test_campaigns.py         # Unit tests for red team modules

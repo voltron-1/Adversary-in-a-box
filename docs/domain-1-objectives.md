@@ -83,5 +83,5 @@
 After each exercise, complete the template at `docs/after-action-template.md` and hash your evidence:
 
 ```bash
-python forensics/chain_of_custody.py --hash-dir forensics/evidence/
+python forensics/chain_of_custody.py --hash-dir evidence/
 ```

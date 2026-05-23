@@ -232,3 +232,13 @@ pki-lab/ca/
 *.csr
 *.p12
 *.pfx
+
+# Gap #5 (audit 2026-05-23): forensic artifacts produced by lab runs.
+# evidence/ is bind-mounted into every container as /evidence — playbook
+# output and student-captured artifacts land here. Only the scaffolding is
+# tracked; per-run artifacts are excluded.
+evidence/*
+!evidence/.gitkeep
+!evidence/README.md
+reports/*
+!reports/.gitkeep
