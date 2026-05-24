@@ -22,12 +22,14 @@ LOG_SOURCES = [
     Path("/app/logs"),
 ]
 
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
 
 def collect():
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -67,6 +69,7 @@ def collect():
     print(f"[ok] Manifest: {manifest_path}")
     print(f"[i] Artifacts: {len(manifest['artifacts'])}")
     return manifest
+
 
 if __name__ == "__main__":
     collect()

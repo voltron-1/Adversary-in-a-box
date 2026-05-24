@@ -57,7 +57,7 @@ class DnsTunnelCampaign(BaseCampaign):
     def _encode_payload(self, payload: bytes) -> list:
         """Base32-encode payload and split into DNS label chunks."""
         encoded = base64.b32encode(payload).decode().lower().rstrip("=")
-        return [encoded[i:i+self.CHUNK_SIZE] for i in range(0, len(encoded), self.CHUNK_SIZE)]
+        return [encoded[i : i + self.CHUNK_SIZE] for i in range(0, len(encoded), self.CHUNK_SIZE)]
 
     def _exfiltrate_via_dns(self, chunks: list) -> int:
         """Simulate DNS query exfiltration (no actual DNS queries made)."""

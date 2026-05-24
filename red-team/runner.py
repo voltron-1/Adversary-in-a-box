@@ -136,7 +136,15 @@ CAMPAIGNS = {
     "full-killchain": {
         "module": None,  # Runs all campaigns in sequence
         "class": None,
-        "techniques": ["T1595", "T1566.001", "T1190", "T1548.003", "T1550.002", "T1048.003", "T1053.003"],
+        "techniques": [
+            "T1595",
+            "T1566.001",
+            "T1190",
+            "T1548.003",
+            "T1550.002",
+            "T1048.003",
+            "T1053.003",
+        ],
         "description": "Full kill chain: recon → initial access → privesc → lateral → exfil → persist",
         "domain": "1-2-3",
     },
@@ -197,7 +205,9 @@ def run_campaign(campaign, technique, target, dry_run):
         sys.exit(1)
 
     if campaign not in CAMPAIGNS:
-        console.print(f"[red]Unknown campaign: {campaign}. Run 'runner.py --list' to see options.[/red]")
+        console.print(
+            f"[red]Unknown campaign: {campaign}. Run 'runner.py --list' to see options.[/red]"
+        )
         sys.exit(1)
 
     cfg = CAMPAIGNS[campaign]
@@ -219,6 +229,7 @@ def run_campaign(campaign, technique, target, dry_run):
 def _run_single_campaign(name, cfg, target_override=None):
     """Dynamically import and execute a single campaign module."""
     import importlib
+
     try:
         module = importlib.import_module(cfg["module"])
         klass = getattr(module, cfg["class"])
@@ -231,7 +242,9 @@ def _run_single_campaign(name, cfg, target_override=None):
         if result.get("success"):
             console.print("[bold green]✓ Campaign completed successfully[/bold green]")
         else:
-            console.print(f"[yellow]⚠ Campaign completed with warnings: {result.get('message')}[/yellow]")
+            console.print(
+                f"[yellow]⚠ Campaign completed with warnings: {result.get('message')}[/yellow]"
+            )
 
         # Log to SIEM
         for technique in cfg["techniques"]:
@@ -244,7 +257,15 @@ def _run_single_campaign(name, cfg, target_override=None):
 
 def _run_full_killchain(target_override=None):
     """Run all campaigns in kill-chain order."""
-    kill_chain = ["recon", "phishing", "initial-access", "privesc", "lateral", "exfil", "persistence"]
+    kill_chain = [
+        "recon",
+        "phishing",
+        "initial-access",
+        "privesc",
+        "lateral",
+        "exfil",
+        "persistence",
+    ]
     console.print("[bold red]⚡ Starting Full Kill Chain[/bold red]\n")
 
     for i, campaign_name in enumerate(kill_chain, 1):
@@ -264,8 +285,11 @@ def cleanup_all():
     IR playbook engine OR by hand before `docker compose down`.
     """
     import importlib
+
     print_banner()
-    console.print("[bold yellow]Running --cleanup-all over every disk-touching campaign...[/bold yellow]\n")
+    console.print(
+        "[bold yellow]Running --cleanup-all over every disk-touching campaign...[/bold yellow]\n"
+    )
     for name, cfg in CAMPAIGNS.items():
         if not cfg.get("module"):
             continue
@@ -283,7 +307,7 @@ def cleanup_all():
                 inst.register_cleanup_path(path)
             result = inst.cleanup()
             removed = len(result.get("removed", []))
-            errors  = len(result.get("errors", []))
+            errors = len(result.get("errors", []))
             color = "green" if errors == 0 else "yellow"
             console.print(
                 f"  [{color}]{name:<16}[/{color}] "
@@ -301,11 +325,17 @@ def cleanup_all():
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--list", "show_list", is_flag=True, help="List available campaigns and exit.")
 @click.option("--campaign", "-c", default=None, help="Campaign name to run (e.g. phishing, recon).")
-@click.option("--technique", "-t", default=None, help="MITRE ATT&CK technique ID (e.g., T1566.001).")
+@click.option(
+    "--technique", "-t", default=None, help="MITRE ATT&CK technique ID (e.g., T1566.001)."
+)
 @click.option("--target", default=None, help="Override target IP/hostname.")
 @click.option("--dry-run", is_flag=True, help="Simulate campaign without executing actions.")
-@click.option("--cleanup-all", "do_cleanup", is_flag=True,
-              help="OQ-1: roll back persistent state left by any campaign and exit.")
+@click.option(
+    "--cleanup-all",
+    "do_cleanup",
+    is_flag=True,
+    help="OQ-1: roll back persistent state left by any campaign and exit.",
+)
 def main(show_list, campaign, technique, target, dry_run, do_cleanup):
     """Adversary-in-a-Box red team campaign launcher."""
     if do_cleanup:

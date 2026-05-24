@@ -56,46 +56,56 @@ class AttackLogger:
 
     def log_step(self, technique_id: str, step: str, detail: str, outcome: str = "success"):
         """Log a campaign step."""
-        self._emit({
-            "event_type": "attack_step",
-            "technique_id": technique_id,
-            "step": step,
-            "detail": detail,
-            "outcome": outcome,
-        })
+        self._emit(
+            {
+                "event_type": "attack_step",
+                "technique_id": technique_id,
+                "step": step,
+                "detail": detail,
+                "outcome": outcome,
+            }
+        )
 
     def log_campaign_start(self, campaign_name: str, target: str, techniques: list):
         """Log campaign initialization."""
-        self._emit({
-            "event_type": "campaign_start",
-            "campaign": campaign_name,
-            "target": target,
-            "techniques": techniques,
-        })
+        self._emit(
+            {
+                "event_type": "campaign_start",
+                "campaign": campaign_name,
+                "target": target,
+                "techniques": techniques,
+            }
+        )
 
     def log_campaign_end(self, campaign_name: str, success: bool, duration_seconds: float):
         """Log campaign completion."""
-        self._emit({
-            "event_type": "campaign_end",
-            "campaign": campaign_name,
-            "success": success,
-            "duration_seconds": duration_seconds,
-        })
+        self._emit(
+            {
+                "event_type": "campaign_end",
+                "campaign": campaign_name,
+                "success": success,
+                "duration_seconds": duration_seconds,
+            }
+        )
 
     def log_error(self, campaign_name: str, error: str):
         """Log a campaign error."""
-        self._emit({
-            "event_type": "campaign_error",
-            "campaign": campaign_name,
-            "error": error,
-            "outcome": "failure",
-        })
+        self._emit(
+            {
+                "event_type": "campaign_error",
+                "campaign": campaign_name,
+                "error": error,
+                "outcome": "failure",
+            }
+        )
 
     def log_artifact(self, technique_id: str, artifact_path: str, artifact_type: str):
         """Log a forensic artifact created during the campaign."""
-        self._emit({
-            "event_type": "artifact_created",
-            "technique_id": technique_id,
-            "artifact_path": artifact_path,
-            "artifact_type": artifact_type,
-        })
+        self._emit(
+            {
+                "event_type": "artifact_created",
+                "technique_id": technique_id,
+                "artifact_path": artifact_path,
+                "artifact_type": artifact_type,
+            }
+        )

@@ -33,8 +33,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 KILLCHAIN_STAGES = [
-    "recon", "phishing", "initial-access", "privesc",
-    "lateral", "exfil", "persistence",
+    "recon",
+    "phishing",
+    "initial-access",
+    "privesc",
+    "lateral",
+    "exfil",
+    "persistence",
 ]
 
 
@@ -81,7 +86,9 @@ class TestFullKillchain(unittest.TestCase):
             # Tear down anything that did come up before failing.
             subprocess.run(
                 ["docker", "compose", "down", "-v"],
-                cwd=REPO_ROOT, capture_output=True, timeout=120,
+                cwd=REPO_ROOT,
+                capture_output=True,
+                timeout=120,
             )
             raise AssertionError(
                 f"start.sh failed (rc={cls.startup_proc.returncode}):\n"
@@ -93,23 +100,34 @@ class TestFullKillchain(unittest.TestCase):
     def tearDownClass(cls) -> None:
         subprocess.run(
             ["docker", "compose", "down", "-v"],
-            cwd=REPO_ROOT, capture_output=True, timeout=120,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            timeout=120,
         )
 
     def test_full_killchain_produces_alerts(self) -> None:
         # Run the full kill chain in the red-team container.
         proc = subprocess.run(
-            ["docker", "compose", "exec", "-T", "red-team",
-             "python", "runner.py", "--campaign", "full-killchain"],
+            [
+                "docker",
+                "compose",
+                "exec",
+                "-T",
+                "red-team",
+                "python",
+                "runner.py",
+                "--campaign",
+                "full-killchain",
+            ],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             timeout=600,
         )
         self.assertEqual(
-            proc.returncode, 0,
-            f"full-killchain run failed:\n"
-            f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+            proc.returncode,
+            0,
+            f"full-killchain run failed:\n" f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
 
         # Give ELK 30 seconds to ingest the campaign-generated traffic.
@@ -119,7 +137,8 @@ class TestFullKillchain(unittest.TestCase):
         result = _es_query({"query": {"match_all": {}}})
         total = result.get("hits", {}).get("total", {}).get("value", 0)
         self.assertGreater(
-            total, 0,
+            total,
+            0,
             "Expected at least one Suricata alert after full-killchain run; "
             "got 0. Either the IDS didn't see the traffic (check Suricata "
             "logs) or the lab is misconfigured.",
@@ -130,7 +149,10 @@ class TestFullKillchain(unittest.TestCase):
         # but this records the per-service state in the test output.
         proc = subprocess.run(
             ["docker", "compose", "ps", "--format", "json"],
-            cwd=REPO_ROOT, capture_output=True, text=True, timeout=30,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         # Parse + count running services. The format is one JSON object
@@ -156,7 +178,10 @@ class TestFullKillchain(unittest.TestCase):
 
         proc = subprocess.run(
             ["docker", "compose", "ps", "--format", "json"],
-            cwd=REPO_ROOT, capture_output=True, text=True, timeout=30,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = proc.stdout.strip()
@@ -171,7 +196,7 @@ class TestFullKillchain(unittest.TestCase):
         for svc in expected_healthchecked:
             entries = [it for it in items if it.get("Service") == svc]
             if not entries:
-                continue   # service not running -- a different test catches that
+                continue  # service not running -- a different test catches that
             health = entries[0].get("Health", "")
             if health and health != "healthy":
                 unhealthy.append(f"{svc}=Health:{health}")

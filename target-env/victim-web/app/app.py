@@ -14,23 +14,31 @@ app.secret_key = "super-insecure-secret-123"  # Intentionally weak
 # In-memory SQLite for portability
 DB_PATH = "/tmp/lab.db"
 
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY, username TEXT, password TEXT, role TEXT)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS notes (
         id INTEGER PRIMARY KEY, user_id INTEGER, content TEXT)""")
-    conn.executemany("INSERT OR IGNORE INTO users VALUES (?,?,?,?)", [
-        (1, "admin", "password123", "admin"),
-        (2, "victim", "letmein", "user"),
-        (3, "test", "test", "user"),
-    ])
-    conn.executemany("INSERT OR IGNORE INTO notes VALUES (?,?,?)", [
-        (1, 1, "Admin secret: FLAG{sql_injection_success}"),
-        (2, 2, "My note here"),
-    ])
+    conn.executemany(
+        "INSERT OR IGNORE INTO users VALUES (?,?,?,?)",
+        [
+            (1, "admin", "password123", "admin"),
+            (2, "victim", "letmein", "user"),
+            (3, "test", "test", "user"),
+        ],
+    )
+    conn.executemany(
+        "INSERT OR IGNORE INTO notes VALUES (?,?,?)",
+        [
+            (1, 1, "Admin secret: FLAG{sql_injection_success}"),
+            (2, 2, "My note here"),
+        ],
+    )
     conn.commit()
     conn.close()
+
 
 INDEX_HTML = """<!DOCTYPE html>
 <html><head><title>LabCorp Internal Portal</title>
@@ -77,9 +85,11 @@ input,button{padding:8px;} </style></head><body>
 <p>Results for: {{ query|safe }}</p>
 </body></html>"""
 
+
 @app.route("/")
 def index():
     return INDEX_HTML
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -102,11 +112,13 @@ def login():
         conn.close()
     return render_template_string(LOGIN_HTML, error=error, success=success, username=username)
 
+
 @app.route("/search")
 def search():
     # VULNERABILITY: Reflected XSS (A03:2021) — query not sanitized
     query = request.args.get("q", "")
     return render_template_string(SEARCH_HTML, query=query)
+
 
 @app.route("/file")
 def file_viewer():
@@ -128,6 +140,7 @@ def file_viewer():
             return f"File not found: {filename}", 404
     except PermissionError:
         return f"Access denied: {filename}", 403
+
 
 if __name__ == "__main__":
     init_db()

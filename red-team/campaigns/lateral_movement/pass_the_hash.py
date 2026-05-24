@@ -29,7 +29,9 @@ class PassTheHashCampaign(BaseCampaign):
 
         # Step 2: Simulate authentication with hash
         auth_result = self._authenticate_with_hash(extracted_hash)
-        self.log_step("pth_auth", f"Authentication result: {auth_result['status']}", auth_result["status"])
+        self.log_step(
+            "pth_auth", f"Authentication result: {auth_result['status']}", auth_result["status"]
+        )
 
         results = {
             "technique": self.TECHNIQUE_ID,

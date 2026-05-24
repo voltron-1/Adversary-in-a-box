@@ -14,8 +14,8 @@ from typing import Any, Protocol
 
 class _LoggerLike(Protocol):
     """Phase C3: minimum surface BaseCampaign uses on a logger."""
-    def log_step(self, technique_id: str, step_name: str,
-                 detail: str, outcome: str) -> Any: ...
+
+    def log_step(self, technique_id: str, step_name: str, detail: str, outcome: str) -> Any: ...
 
 
 class _TaggerLike(Protocol):
@@ -48,9 +48,9 @@ class BaseCampaign(abc.ABC):
     TECHNIQUE_NAME: str = "Base Technique"
     TACTIC: str = "Unknown"
 
-    def __init__(self, target: str,
-                 logger: _LoggerLike | None = None,
-                 tagger: _TaggerLike | None = None) -> None:
+    def __init__(
+        self, target: str, logger: _LoggerLike | None = None, tagger: _TaggerLike | None = None
+    ) -> None:
         self.target = target
         self.logger = logger
         self.tagger = tagger
@@ -75,8 +75,7 @@ class BaseCampaign(abc.ABC):
         """
         raise NotImplementedError
 
-    def log_step(self, step_name: str, detail: str,
-                 outcome: str = "success") -> CampaignStep:
+    def log_step(self, step_name: str, detail: str, outcome: str = "success") -> CampaignStep:
         """Record a campaign step for reporting."""
         step: CampaignStep = {
             "step": step_name,

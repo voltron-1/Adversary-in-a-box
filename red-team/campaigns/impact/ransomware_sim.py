@@ -31,9 +31,9 @@ class RansomwareSimCampaign(BaseCampaign):
 
     # Plausible decoy file set seeded into DECOY_DIR if missing.
     DECOYS = {
-        "notes.txt":        "Personal notes -- lab simulation.\n",
-        "q4_report.docx":   "Confidential Q4 results -- lab simulation.\n",
-        "contacts.csv":     "name,email\nAlice,alice@lab.local\nBob,bob@lab.local\n",
+        "notes.txt": "Personal notes -- lab simulation.\n",
+        "q4_report.docx": "Confidential Q4 results -- lab simulation.\n",
+        "contacts.csv": "name,email\nAlice,alice@lab.local\nBob,bob@lab.local\n",
     }
 
     RANSOM_NOTE = """\

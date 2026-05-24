@@ -20,7 +20,7 @@ ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "http://elasticsearch:92
 # Holds ONLY manual instructor-applied adjustments — automated MTTD/MTTA
 # scoring lives entirely in scorer.py and is computed from ES data.
 MANUAL_SCORES = {
-    "red_team":  {"total": 0, "history": []},
+    "red_team": {"total": 0, "history": []},
     "blue_team": {"total": 0, "history": []},
 }
 
@@ -44,9 +44,9 @@ MANUAL_SCORES = {
 # No overlap with the OQ-5 dimensions -- adding an event here that the
 # scorer also tracks would double-count.
 MANUAL_OVERRIDE_RULES = {
-    "extra_credit_red":     10,
-    "extra_credit_blue":    10,
-    "kill_chain_complete":  50,
+    "extra_credit_red": 10,
+    "extra_credit_blue": 10,
+    "kill_chain_complete": 50,
     "lab_violation_penalty": -25,
 }
 
@@ -54,9 +54,12 @@ MANUAL_OVERRIDE_RULES = {
 @app.route("/")
 def scoreboard():
     scores = _compute_scores()
-    return render_template("scoreboard.html", scores=scores,
-                           rules=MANUAL_OVERRIDE_RULES,
-                           now=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
+    return render_template(
+        "scoreboard.html",
+        scores=scores,
+        rules=MANUAL_OVERRIDE_RULES,
+        now=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+    )
 
 
 @app.route("/api/scores")
@@ -78,20 +81,24 @@ def award_points():
     detail = data.get("detail", "")
 
     if team not in ("red_team", "blue_team") or event not in MANUAL_OVERRIDE_RULES:
-        return jsonify({
-            "error": "Invalid team or event",
-            "valid_teams": ["red_team", "blue_team"],
-            "valid_events": list(MANUAL_OVERRIDE_RULES.keys()),
-        }), 400
+        return jsonify(
+            {
+                "error": "Invalid team or event",
+                "valid_teams": ["red_team", "blue_team"],
+                "valid_events": list(MANUAL_OVERRIDE_RULES.keys()),
+            }
+        ), 400
 
     points = MANUAL_OVERRIDE_RULES[event]
     MANUAL_SCORES[team]["total"] += points
-    MANUAL_SCORES[team]["history"].append({
-        "event": event,
-        "points": points,
-        "detail": detail,
-        "timestamp": datetime.now(UTC).isoformat(),
-    })
+    MANUAL_SCORES[team]["history"].append(
+        {
+            "event": event,
+            "points": points,
+            "detail": detail,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+    )
     return jsonify({"awarded": points, "total": MANUAL_SCORES[team]["total"]})
 
 
@@ -109,10 +116,10 @@ def _compute_scores() -> dict:
     """
     scores = Scorer().compute_final_scores()
 
-    manual_red  = MANUAL_SCORES["red_team"]["total"]
+    manual_red = MANUAL_SCORES["red_team"]["total"]
     manual_blue = MANUAL_SCORES["blue_team"]["total"]
     if manual_red:
-        scores["red_team"]["total"]  = round(scores["red_team"]["total"]  + manual_red, 1)
+        scores["red_team"]["total"] = round(scores["red_team"]["total"] + manual_red, 1)
         scores["red_team"]["history"].extend(MANUAL_SCORES["red_team"]["history"])
     if manual_blue:
         scores["blue_team"]["total"] = round(scores["blue_team"]["total"] + manual_blue, 1)

@@ -46,7 +46,9 @@ class TestBaseCampaignCleanup(unittest.TestCase):
 
         class Dummy(BaseCampaign):
             TECHNIQUE_ID = "T0002"
-            def run(self): return self.build_result(True, "noop")
+
+            def run(self):
+                return self.build_result(True, "noop")
 
         c = Dummy(target="http://test")
         c.register_cleanup_path("/nonexistent/path/that/will/never/be/there")
@@ -61,7 +63,9 @@ class TestBaseCampaignCleanup(unittest.TestCase):
 
         class Dummy(BaseCampaign):
             TECHNIQUE_ID = "T0003"
-            def run(self): return self.build_result(True, "noop")
+
+            def run(self):
+                return self.build_result(True, "noop")
 
         c = Dummy(target="http://test")
         c.register_cleanup_path("/same/path")
@@ -80,9 +84,7 @@ class TestSshKeyPlantCleanup(unittest.TestCase):
             existing_user_key = (
                 "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXAMPLE legitimate-user@host\n"
             )
-            auth_keys.write_text(
-                existing_user_key + f"\n{SshKeyPlantCampaign.LAB_PUBLIC_KEY}\n"
-            )
+            auth_keys.write_text(existing_user_key + f"\n{SshKeyPlantCampaign.LAB_PUBLIC_KEY}\n")
 
             c = SshKeyPlantCampaign(target="http://test")
             c.register_cleanup_path(str(auth_keys))
@@ -124,7 +126,7 @@ class TestCronBackdoorCleanup(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             beacon = Path(tmp) / "lab_beacon.sh"
-            log    = Path(tmp) / "lab_beacon.log"
+            log = Path(tmp) / "lab_beacon.log"
             beacon.write_text("#!/bin/bash\necho lab\n")
             log.write_text("[t] LAB beacon ping\n")
 
@@ -148,11 +150,13 @@ class TestWellKnownArtifacts(unittest.TestCase):
 
     def test_cron_backdoor_declares_artifacts(self):
         from campaigns.persistence.cron_backdoor import CronBackdoorCampaign
+
         self.assertTrue(hasattr(CronBackdoorCampaign, "WELL_KNOWN_ARTIFACTS"))
         self.assertGreater(len(CronBackdoorCampaign.WELL_KNOWN_ARTIFACTS), 0)
 
     def test_ssh_key_plant_declares_artifacts(self):
         from campaigns.persistence.ssh_key_plant import SshKeyPlantCampaign
+
         self.assertTrue(hasattr(SshKeyPlantCampaign, "WELL_KNOWN_ARTIFACTS"))
         self.assertGreater(len(SshKeyPlantCampaign.WELL_KNOWN_ARTIFACTS), 0)
 

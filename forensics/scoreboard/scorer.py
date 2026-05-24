@@ -41,25 +41,25 @@ def _env_float(name: str, default: float) -> float:
 
 # Thresholds: (max_seconds_inclusive, multiplier_0_to_1, tier_label)
 DETECTION_THRESHOLDS = [
-    (_env_int("MTTD_GOLD_S",   120),  1.00, "Gold"),
-    (_env_int("MTTD_SILVER_S", 300),  0.60, "Silver"),
-    (_env_int("MTTD_BRONZE_S", 600),  0.25, "Bronze"),
+    (_env_int("MTTD_GOLD_S", 120), 1.00, "Gold"),
+    (_env_int("MTTD_SILVER_S", 300), 0.60, "Silver"),
+    (_env_int("MTTD_BRONZE_S", 600), 0.25, "Bronze"),
 ]
 
 RESPONSE_THRESHOLDS = [
-    (_env_int("MTTA_GOLD_S",   300),   1.00, "Gold"),
-    (_env_int("MTTA_SILVER_S", 900),   0.60, "Silver"),
-    (_env_int("MTTA_BRONZE_S", 1800),  0.25, "Bronze"),
+    (_env_int("MTTA_GOLD_S", 300), 1.00, "Gold"),
+    (_env_int("MTTA_SILVER_S", 900), 0.60, "Silver"),
+    (_env_int("MTTA_BRONZE_S", 1800), 0.25, "Bronze"),
 ]
 
-POINTS_PER_DETECTION   = _env_int("POINTS_PER_DETECTION", 10)
-POINTS_PER_RESPONSE    = _env_int("POINTS_PER_RESPONSE",  10)
+POINTS_PER_DETECTION = _env_int("POINTS_PER_DETECTION", 10)
+POINTS_PER_RESPONSE = _env_int("POINTS_PER_RESPONSE", 10)
 FALSE_POSITIVE_PENALTY = _env_int("FALSE_POSITIVE_PENALTY", 5)
-EVIDENCE_BONUS         = _env_int("EVIDENCE_BONUS",        10)
-PLAYBOOK_CLEAN_BONUS   = _env_int("PLAYBOOK_CLEAN_BONUS",   5)
-UNDETECTED_BONUS_RED   = _env_int("UNDETECTED_BONUS_RED",  15)
-DETECTION_WEIGHT       = _env_float("DETECTION_WEIGHT", 0.5)
-RESPONSE_WEIGHT        = _env_float("RESPONSE_WEIGHT",  0.5)
+EVIDENCE_BONUS = _env_int("EVIDENCE_BONUS", 10)
+PLAYBOOK_CLEAN_BONUS = _env_int("PLAYBOOK_CLEAN_BONUS", 5)
+UNDETECTED_BONUS_RED = _env_int("UNDETECTED_BONUS_RED", 15)
+DETECTION_WEIGHT = _env_float("DETECTION_WEIGHT", 0.5)
+RESPONSE_WEIGHT = _env_float("RESPONSE_WEIGHT", 0.5)
 
 
 TierRow = tuple[int, float, str]
@@ -81,10 +81,12 @@ class Scorer:
         self.es_url = es_url or ELASTICSEARCH_URL
 
     # ------------------------------------------------------------------ ES helpers
-    def _es_search(self, index: str, body: dict[str, Any],
-                   default: dict[str, Any]) -> dict[str, Any]:
+    def _es_search(
+        self, index: str, body: dict[str, Any], default: dict[str, Any]
+    ) -> dict[str, Any]:
         try:
             import requests
+
             resp = requests.get(f"{self.es_url}/{index}/_search", json=body, timeout=5)
             return resp.json() if resp.ok else default
         except Exception as e:  # network failures during scoring are non-fatal
@@ -101,20 +103,29 @@ class Scorer:
         """
         attacks = self._es_search(
             "red-team-events-*",
-            {"query": {"match": {"event_type": "campaign_start"}}, "size": 200,
-             "sort": [{"@timestamp": "asc"}]},
+            {
+                "query": {"match": {"event_type": "campaign_start"}},
+                "size": 200,
+                "sort": [{"@timestamp": "asc"}],
+            },
             {"hits": {"hits": []}},
         )["hits"]["hits"]
         alerts = self._es_search(
             "suricata-*",
-            {"query": {"exists": {"field": "campaign_id"}}, "size": 500,
-             "sort": [{"@timestamp": "asc"}]},
+            {
+                "query": {"exists": {"field": "campaign_id"}},
+                "size": 500,
+                "sort": [{"@timestamp": "asc"}],
+            },
             {"hits": {"hits": []}},
         )["hits"]["hits"]
         responses = self._es_search(
             "ir-events-*",
-            {"query": {"match": {"event_type": "playbook_complete"}}, "size": 200,
-             "sort": [{"@timestamp": "asc"}]},
+            {
+                "query": {"match": {"event_type": "playbook_complete"}},
+                "size": 200,
+                "sort": [{"@timestamp": "asc"}],
+            },
             {"hits": {"hits": []}},
         )["hits"]["hits"]
 
@@ -159,19 +170,27 @@ class Scorer:
             mttd = alert_ts - attack_ts
             mult, tier = score_tier(mttd, DETECTION_THRESHOLDS)
             det_points += mult * POINTS_PER_DETECTION
-            history.append({"event": cid,
-                            "detail": f"MTTD {int(mttd)}s ({tier})",
-                            "points": int(mult * POINTS_PER_DETECTION),
-                            "tier": tier})
+            history.append(
+                {
+                    "event": cid,
+                    "detail": f"MTTD {int(mttd)}s ({tier})",
+                    "points": int(mult * POINTS_PER_DETECTION),
+                    "tier": tier,
+                }
+            )
 
             if resp_ts is not None:
                 mtta = resp_ts - alert_ts
                 rmult, rtier = score_tier(mtta, RESPONSE_THRESHOLDS)
                 resp_points += rmult * POINTS_PER_RESPONSE
-                history.append({"event": cid,
-                                "detail": f"MTTA {int(mtta)}s ({rtier})",
-                                "points": int(rmult * POINTS_PER_RESPONSE),
-                                "tier": rtier})
+                history.append(
+                    {
+                        "event": cid,
+                        "detail": f"MTTA {int(mtta)}s ({rtier})",
+                        "points": int(rmult * POINTS_PER_RESPONSE),
+                        "tier": rtier,
+                    }
+                )
                 if rmult == 1.0:
                     clean_playbooks += 1
 
@@ -182,18 +201,18 @@ class Scorer:
         playbook_bonus = clean_playbooks * PLAYBOOK_CLEAN_BONUS
 
         detection_score = max(det_points + evidence_bonus - fp_penalty, 0.0)
-        response_score  = max(resp_points + playbook_bonus, 0.0)
+        response_score = max(resp_points + playbook_bonus, 0.0)
         total = DETECTION_WEIGHT * detection_score + RESPONSE_WEIGHT * response_score
 
         return {
-            "detection_score":  round(detection_score, 1),
-            "response_score":   round(response_score, 1),
-            "total":            round(total, 1),
-            "false_positives":  fp_count,
-            "evidence_bonus":   evidence_bonus,
-            "playbook_bonus":   playbook_bonus,
-            "misses":           misses,
-            "history":          history,
+            "detection_score": round(detection_score, 1),
+            "response_score": round(response_score, 1),
+            "total": round(total, 1),
+            "false_positives": fp_count,
+            "evidence_bonus": evidence_bonus,
+            "playbook_bonus": playbook_bonus,
+            "misses": misses,
+            "history": history,
         }
 
     def get_red_team_score(self) -> ScoreReport:
@@ -226,8 +245,8 @@ class Scorer:
             "winner": winner,
             "thresholds": {
                 "detection": DETECTION_THRESHOLDS,
-                "response":  RESPONSE_THRESHOLDS,
-                "weights":   {"detection": DETECTION_WEIGHT, "response": RESPONSE_WEIGHT},
+                "response": RESPONSE_THRESHOLDS,
+                "weights": {"detection": DETECTION_WEIGHT, "response": RESPONSE_WEIGHT},
             },
         }
 
@@ -235,6 +254,7 @@ class Scorer:
     def _campaigns_completed(self) -> int:
         try:
             import requests
+
             resp = requests.get(
                 f"{self.es_url}/red-team-events-*/_count",
                 json={"query": {"match": {"event_type": "campaign_end"}}},
@@ -251,10 +271,17 @@ class Scorer:
         # Alerts without a matching campaign_id are false positives.
         try:
             import requests
+
             resp = requests.get(
                 f"{self.es_url}/suricata-*/_count",
-                json={"query": {"bool": {"must_not": [{"exists": {"field": "campaign_id"}}],
-                                         "must": [{"match": {"event_type": "alert"}}]}}},
+                json={
+                    "query": {
+                        "bool": {
+                            "must_not": [{"exists": {"field": "campaign_id"}}],
+                            "must": [{"match": {"event_type": "alert"}}],
+                        }
+                    }
+                },
                 timeout=5,
             )
             return resp.json().get("count", 0) if resp.ok else 0

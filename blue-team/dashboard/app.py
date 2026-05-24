@@ -17,28 +17,88 @@ EVIDENCE_DIR = Path(os.environ.get("EVIDENCE_DIR", "/evidence"))
 
 # Simulated alerts for demo when SIEM is not connected
 DEMO_ALERTS = [
-    {"id": "1", "timestamp": "2024-01-15T14:23:01Z", "severity": "critical", "technique": "T1566.001",
-     "name": "Spearphishing Attachment Detected", "src_ip": "172.20.0.10", "dst_ip": "172.20.0.32",
-     "status": "open", "description": "Phishing email with suspicious attachment detected by Suricata"},
-    {"id": "2", "timestamp": "2024-01-15T14:25:33Z", "severity": "high", "technique": "T1595",
-     "name": "Port Scan Detected", "src_ip": "172.20.0.10", "dst_ip": "172.20.0.30",
-     "status": "open", "description": "20 ports scanned in 1 second from attacker IP"},
-    {"id": "3", "timestamp": "2024-01-15T14:28:47Z", "severity": "critical", "technique": "T1190",
-     "name": "SQL Injection Attempt", "src_ip": "172.20.0.10", "dst_ip": "172.20.0.30",
-     "status": "investigating", "description": "SQL injection payload detected in login form"},
-    {"id": "4", "timestamp": "2024-01-15T14:31:09Z", "severity": "high", "technique": "T1548.003",
-     "name": "Sudo Privilege Escalation", "src_ip": "172.20.0.10", "dst_ip": "172.20.0.30",
-     "status": "open", "description": "Sudo abuse via GTFOBins binary detected"},
-    {"id": "5", "timestamp": "2024-01-15T14:35:22Z", "severity": "critical", "technique": "T1048.003",
-     "name": "DNS Tunneling Detected", "src_ip": "172.20.0.30", "dst_ip": "8.8.8.8",
-     "status": "open", "description": "High-entropy DNS subdomain detected — possible data exfiltration"},
+    {
+        "id": "1",
+        "timestamp": "2024-01-15T14:23:01Z",
+        "severity": "critical",
+        "technique": "T1566.001",
+        "name": "Spearphishing Attachment Detected",
+        "src_ip": "172.20.0.10",
+        "dst_ip": "172.20.0.32",
+        "status": "open",
+        "description": "Phishing email with suspicious attachment detected by Suricata",
+    },
+    {
+        "id": "2",
+        "timestamp": "2024-01-15T14:25:33Z",
+        "severity": "high",
+        "technique": "T1595",
+        "name": "Port Scan Detected",
+        "src_ip": "172.20.0.10",
+        "dst_ip": "172.20.0.30",
+        "status": "open",
+        "description": "20 ports scanned in 1 second from attacker IP",
+    },
+    {
+        "id": "3",
+        "timestamp": "2024-01-15T14:28:47Z",
+        "severity": "critical",
+        "technique": "T1190",
+        "name": "SQL Injection Attempt",
+        "src_ip": "172.20.0.10",
+        "dst_ip": "172.20.0.30",
+        "status": "investigating",
+        "description": "SQL injection payload detected in login form",
+    },
+    {
+        "id": "4",
+        "timestamp": "2024-01-15T14:31:09Z",
+        "severity": "high",
+        "technique": "T1548.003",
+        "name": "Sudo Privilege Escalation",
+        "src_ip": "172.20.0.10",
+        "dst_ip": "172.20.0.30",
+        "status": "open",
+        "description": "Sudo abuse via GTFOBins binary detected",
+    },
+    {
+        "id": "5",
+        "timestamp": "2024-01-15T14:35:22Z",
+        "severity": "critical",
+        "technique": "T1048.003",
+        "name": "DNS Tunneling Detected",
+        "src_ip": "172.20.0.30",
+        "dst_ip": "8.8.8.8",
+        "status": "open",
+        "description": "High-entropy DNS subdomain detected — possible data exfiltration",
+    },
 ]
 
 PLAYBOOKS = [
-    {"id": "phishing_ir", "name": "Phishing Response", "severity": "high", "techniques": ["T1566.001"]},
-    {"id": "ransomware_ir", "name": "Ransomware Response", "severity": "critical", "techniques": ["T1486"]},
-    {"id": "lateral_movement_ir", "name": "Lateral Movement Response", "severity": "critical", "techniques": ["T1550.002", "T1563.001"]},
-    {"id": "data_exfil_ir", "name": "Data Exfiltration Response", "severity": "critical", "techniques": ["T1041", "T1048.003"]},
+    {
+        "id": "phishing_ir",
+        "name": "Phishing Response",
+        "severity": "high",
+        "techniques": ["T1566.001"],
+    },
+    {
+        "id": "ransomware_ir",
+        "name": "Ransomware Response",
+        "severity": "critical",
+        "techniques": ["T1486"],
+    },
+    {
+        "id": "lateral_movement_ir",
+        "name": "Lateral Movement Response",
+        "severity": "critical",
+        "techniques": ["T1550.002", "T1563.001"],
+    },
+    {
+        "id": "data_exfil_ir",
+        "name": "Data Exfiltration Response",
+        "severity": "critical",
+        "techniques": ["T1041", "T1048.003"],
+    },
 ]
 
 
@@ -46,6 +106,7 @@ def get_alerts():
     """Fetch alerts from Elasticsearch or fall back to demo data."""
     try:
         import requests
+
         resp = requests.get(f"{ELASTICSEARCH_URL}/red-team-events-*/_search?size=50", timeout=3)
         if resp.ok:
             hits = resp.json().get("hits", {}).get("hits", [])
@@ -64,8 +125,12 @@ def index():
         "high": sum(1 for a in alerts if a.get("severity") == "high"),
         "open": sum(1 for a in alerts if a.get("status") == "open"),
     }
-    return render_template("index.html", alerts=alerts[:10], stats=stats,
-                           now=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
+    return render_template(
+        "index.html",
+        alerts=alerts[:10],
+        stats=stats,
+        now=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+    )
 
 
 @app.route("/alerts")
@@ -89,8 +154,10 @@ def run_playbook():
     context = data.get("context", {})
     try:
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from response.playbook_engine import PlaybookEngine
+
         engine = PlaybookEngine(playbook_id)
         result = engine.execute(context)
         return jsonify({"success": True, "result": result})
@@ -106,14 +173,16 @@ def api_alerts():
 @app.route("/api/stats")
 def api_stats():
     alerts = get_alerts()
-    return jsonify({
-        "total_alerts": len(alerts),
-        "critical": sum(1 for a in alerts if a.get("severity") == "critical"),
-        "high": sum(1 for a in alerts if a.get("severity") == "high"),
-        "medium": sum(1 for a in alerts if a.get("severity") == "medium"),
-        "open": sum(1 for a in alerts if a.get("status") == "open"),
-        "last_updated": datetime.now(UTC).isoformat(),
-    })
+    return jsonify(
+        {
+            "total_alerts": len(alerts),
+            "critical": sum(1 for a in alerts if a.get("severity") == "critical"),
+            "high": sum(1 for a in alerts if a.get("severity") == "high"),
+            "medium": sum(1 for a in alerts if a.get("severity") == "medium"),
+            "open": sum(1 for a in alerts if a.get("status") == "open"),
+            "last_updated": datetime.now(UTC).isoformat(),
+        }
+    )
 
 
 if __name__ == "__main__":

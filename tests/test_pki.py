@@ -1,6 +1,7 @@
 """
 tests/test_pki.py — Unit tests for PKI lab scripts and TLS hardening tools
 """
+
 import sys
 import hashlib
 import json
@@ -19,17 +20,20 @@ class TestCipherAudit(unittest.TestCase):
 
     def test_cipher_audit_module_imports(self):
         import cipher_audit
+
         self.assertTrue(hasattr(cipher_audit, "audit"))
         self.assertTrue(hasattr(cipher_audit, "get_certificate_info"))
 
     def test_get_cert_info_handles_connection_error(self):
         import cipher_audit
+
         # Should return error dict, not raise
         result = cipher_audit.get_certificate_info("nonexistent.lab.local", 443)
         self.assertIn("error", result)
 
     def test_check_tls_version_returns_dict(self):
         import cipher_audit
+
         result = cipher_audit.check_tls_version("nonexistent.lab.local", 443, "TLSv1", None)
         self.assertIn("version", result)
         self.assertIn("status", result)
@@ -37,6 +41,7 @@ class TestCipherAudit(unittest.TestCase):
 
     def test_weak_ciphers_list_is_defined(self):
         import cipher_audit
+
         self.assertIsInstance(cipher_audit.WEAK_CIPHERS, list)
         self.assertIn("RC4", cipher_audit.WEAK_CIPHERS)
         self.assertIn("3DES", cipher_audit.WEAK_CIPHERS)
@@ -51,7 +56,8 @@ class TestChainOfCustody(unittest.TestCase):
 
     def test_sha256_file_produces_correct_hash(self):
         from chain_of_custody import sha256_file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("test content for hashing")
             path = Path(f.name)
 
@@ -62,6 +68,7 @@ class TestChainOfCustody(unittest.TestCase):
 
     def test_hash_directory_creates_manifest(self):
         from chain_of_custody import hash_directory
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create test files
             p = Path(tmpdir)
@@ -81,6 +88,7 @@ class TestChainOfCustody(unittest.TestCase):
 
     def test_manifest_file_entries_have_sha256(self):
         from chain_of_custody import hash_directory
+
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir)
             (p / "evidence.txt").write_text("some evidence data")
@@ -94,6 +102,7 @@ class TestChainOfCustody(unittest.TestCase):
 
     def test_verify_detects_tampered_file(self):
         from chain_of_custody import hash_directory, verify_manifest
+
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir)
             evidence_file = p / "evidence.txt"
@@ -114,6 +123,7 @@ class TestChainOfCustody(unittest.TestCase):
 
     def test_verify_passes_for_intact_files(self):
         from chain_of_custody import hash_directory, verify_manifest
+
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir)
             (p / "evidence.txt").write_text("original content — untampered")

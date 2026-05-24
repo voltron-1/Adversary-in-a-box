@@ -23,21 +23,20 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 # Industry-standard AV test string. Triggers signatures without executing.
-EICAR_STRING = (
-    r"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
-)
+EICAR_STRING = r"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
 
 # Static, lab-internal markers used by non-phishing campaigns. Each one is the
 # *behavioral signature* the blue team learns to detect.
-LAB_TEST_KEY      = "adversary-in-a-box-test-key"
-LAB_DNS_LABEL     = "ADVERSARY-IN-A-BOX-TEST"
-LAB_HTTPS_BODY    = '{"test": "adversary-in-a-box"}'
-LAB_CRON_COMMAND  = "echo adversary-in-a-box"
+LAB_TEST_KEY = "adversary-in-a-box-test-key"
+LAB_DNS_LABEL = "ADVERSARY-IN-A-BOX-TEST"
+LAB_HTTPS_BODY = '{"test": "adversary-in-a-box"}'
+LAB_CRON_COMMAND = "echo adversary-in-a-box"
 
 
 @dataclass
 class PayloadPlan:
     """A plan for a payload: what would be written, where, and why."""
+
     technique: str
     description: str
     target_path: str | None
@@ -109,32 +108,63 @@ echo "[LAB] No actual malicious actions performed"
     def all_plans() -> list[PayloadPlan]:
         """Return the plan-of-record for every campaign known to the lab (per ADR OQ-1)."""
         return [
-            PayloadPlan("T1566.001",  "Phishing: EICAR string in benefits-form attachment",
-                        os.path.join(PayloadGenerator.OUTPUT_DIR, "payload_<ts>.txt"),
-                        EICAR_STRING),
-            PayloadPlan("T1105",      "Malware drop: EICAR to temp path, deleted post-test",
-                        tempfile.gettempdir() + "/eicar.com", EICAR_STRING),
-            PayloadPlan("T1048.003",  "DNS tunnel: base32 marker in DNS query labels",
-                        None, LAB_DNS_LABEL),
-            PayloadPlan("T1041",      "HTTPS exfil: static JSON POST to scoreboard",
-                        "http://scoreboard:5002/_lab_exfil_sink", LAB_HTTPS_BODY),
-            PayloadPlan("T1563.001",  "SSH hijack: inject test key into authorized_keys",
-                        "~/.ssh/authorized_keys", LAB_TEST_KEY),
-            PayloadPlan("T1550.002",  "Pass the Hash: simulate NTLM handshake to honeypot socket",
-                        None, "<NTLM handshake packet>"),
-            PayloadPlan("T1548.003",  "Sudo abuse: run `sudo id` on victim, log escalation",
-                        None, "sudo id"),
-            PayloadPlan("T1053.003",  "Cron backdoor: write echo entry, removed by playbook",
-                        "/etc/cron.d/lab-test", "* * * * * root " + LAB_CRON_COMMAND),
+            PayloadPlan(
+                "T1566.001",
+                "Phishing: EICAR string in benefits-form attachment",
+                os.path.join(PayloadGenerator.OUTPUT_DIR, "payload_<ts>.txt"),
+                EICAR_STRING,
+            ),
+            PayloadPlan(
+                "T1105",
+                "Malware drop: EICAR to temp path, deleted post-test",
+                tempfile.gettempdir() + "/eicar.com",
+                EICAR_STRING,
+            ),
+            PayloadPlan(
+                "T1048.003", "DNS tunnel: base32 marker in DNS query labels", None, LAB_DNS_LABEL
+            ),
+            PayloadPlan(
+                "T1041",
+                "HTTPS exfil: static JSON POST to scoreboard",
+                "http://scoreboard:5002/_lab_exfil_sink",
+                LAB_HTTPS_BODY,
+            ),
+            PayloadPlan(
+                "T1563.001",
+                "SSH hijack: inject test key into authorized_keys",
+                "~/.ssh/authorized_keys",
+                LAB_TEST_KEY,
+            ),
+            PayloadPlan(
+                "T1550.002",
+                "Pass the Hash: simulate NTLM handshake to honeypot socket",
+                None,
+                "<NTLM handshake packet>",
+            ),
+            PayloadPlan(
+                "T1548.003", "Sudo abuse: run `sudo id` on victim, log escalation", None, "sudo id"
+            ),
+            PayloadPlan(
+                "T1053.003",
+                "Cron backdoor: write echo entry, removed by playbook",
+                "/etc/cron.d/lab-test",
+                "* * * * * root " + LAB_CRON_COMMAND,
+            ),
         ]
 
 
 def _cli() -> int:
     parser = argparse.ArgumentParser(description="Adversary-in-a-Box payload generator")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Print step-by-step plan for every campaign without executing.")
-    parser.add_argument("--campaign", default=None,
-                        help="Run a single payload (doc|script). Ignored with --dry-run.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print step-by-step plan for every campaign without executing.",
+    )
+    parser.add_argument(
+        "--campaign",
+        default=None,
+        help="Run a single payload (doc|script). Ignored with --dry-run.",
+    )
     args = parser.parse_args()
 
     if args.dry_run:

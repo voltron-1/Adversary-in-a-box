@@ -17,16 +17,17 @@ class TestScoreTiers(unittest.TestCase):
     def setUp(self):
         # Defaults from ADR 0001 (seconds). Reset via env in case another test
         # overrode them in the same process.
-        os.environ.pop("MTTD_GOLD_S",   None)
+        os.environ.pop("MTTD_GOLD_S", None)
         os.environ.pop("MTTD_SILVER_S", None)
         os.environ.pop("MTTD_BRONZE_S", None)
-        os.environ.pop("MTTA_GOLD_S",   None)
+        os.environ.pop("MTTA_GOLD_S", None)
         os.environ.pop("MTTA_SILVER_S", None)
         os.environ.pop("MTTA_BRONZE_S", None)
         # Re-import after env reset so module-level constants pick up defaults.
         if "scorer" in sys.modules:
             del sys.modules["scorer"]
         import scorer  # noqa: F401
+
         self.scorer_mod = sys.modules["scorer"]
 
     # ------------------------------------------------------------- detection (MTTD)
@@ -79,6 +80,7 @@ class TestBoundaryAndEnvOverride(unittest.TestCase):
         if "scorer" in sys.modules:
             del sys.modules["scorer"]
         import scorer  # noqa: F401
+
         return sys.modules["scorer"]
 
     def test_boundary_inclusive_upper_gold(self):
@@ -91,7 +93,7 @@ class TestBoundaryAndEnvOverride(unittest.TestCase):
         self.assertEqual(label_over, "Silver")
 
     def test_env_override_takes_effect(self):
-        os.environ["MTTD_GOLD_S"] = "30"      # 0.5 min
+        os.environ["MTTD_GOLD_S"] = "30"  # 0.5 min
         os.environ["MTTD_SILVER_S"] = "60"
         os.environ["MTTD_BRONZE_S"] = "90"
         try:

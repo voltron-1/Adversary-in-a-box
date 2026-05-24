@@ -61,7 +61,10 @@ class PlaybookEngine:
 
         # Save execution log to evidence
         EVIDENCE_DIR.mkdir(exist_ok=True)
-        log_path = EVIDENCE_DIR / f"playbook_{self.playbook_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        log_path = (
+            EVIDENCE_DIR
+            / f"playbook_{self.playbook_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
         with open(log_path, "w") as f:
             json.dump(summary, f, indent=2)
 
@@ -92,8 +95,12 @@ class PlaybookEngine:
             return result
 
         except Exception as exc:
-            error = {"step": step_name, "success": False, "error": str(exc),
-                     "timestamp": datetime.now(UTC).isoformat()}
+            error = {
+                "step": step_name,
+                "success": False,
+                "error": str(exc),
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
             print(f"    [FAIL] Failed: {exc}")
             return error
 
@@ -113,8 +120,7 @@ class PlaybookEngine:
     def _collect_evidence(self, step: dict, context: dict) -> dict:
         collector = ACTIONS_DIR / "collect_evidence.py"
         proc = subprocess.run(
-            ["python3", str(collector)],
-            capture_output=True, text=True, timeout=30
+            ["python3", str(collector)], capture_output=True, text=True, timeout=30
         )
         return {"success": proc.returncode == 0, "output": proc.stdout.strip()}
 
@@ -135,19 +141,27 @@ class PlaybookEngine:
         # this works regardless of the per-student COMPOSE_PROJECT_NAME.
         try:
             ps = subprocess.run(
-                ["docker", "ps", "--filter",
-                 f"label=com.docker.compose.service={service}",
-                 "--format", "{{.Names}}"],
-                capture_output=True, text=True, timeout=10,
+                [
+                    "docker",
+                    "ps",
+                    "--filter",
+                    f"label=com.docker.compose.service={service}",
+                    "--format",
+                    "{{.Names}}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             names = [n for n in ps.stdout.split("\n") if n.strip()]
             if not names:
-                return {"success": False,
-                        "output": f"No running container for service '{service}'"}
+                return {"success": False, "output": f"No running container for service '{service}'"}
             container = names[0]
             proc = subprocess.run(
                 ["docker", "exec", container, "python", "runner.py", "--cleanup-all"],
-                capture_output=True, text=True, timeout=60,
+                capture_output=True,
+                text=True,
+                timeout=60,
             )
             return {
                 "success": proc.returncode == 0,

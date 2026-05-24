@@ -47,12 +47,16 @@ class SpearPhishCampaign(BaseCampaign):
         # Step 1: Generate benign payload
         payload_gen = PayloadGenerator()
         payload_path, payload_hash = payload_gen.generate_doc_payload()
-        self.log_step("payload_generation", f"Created payload: {payload_path} (SHA256: {payload_hash})")
+        self.log_step(
+            "payload_generation", f"Created payload: {payload_path} (SHA256: {payload_hash})"
+        )
         self.simulate_delay(1)
 
         # Step 2: Craft phishing email
         msg = self._craft_phishing_email(payload_path)
-        self.log_step("email_crafted", f"Spoofed sender: {self.SPOOFED_SENDER}, Subject: {msg['Subject']}")
+        self.log_step(
+            "email_crafted", f"Spoofed sender: {self.SPOOFED_SENDER}, Subject: {msg['Subject']}"
+        )
         self.simulate_delay(0.5)
 
         # Step 3: Attempt delivery
@@ -60,18 +64,25 @@ class SpearPhishCampaign(BaseCampaign):
 
         if delivered:
             self.log_step("email_delivered", f"Email delivered to {self.TARGET_EMAIL}", "success")
-            artifact_data = json.dumps({
-                "technique": self.TECHNIQUE_ID,
-                "target_email": self.TARGET_EMAIL,
-                "spoofed_sender": self.SPOOFED_SENDER,
-                "payload_hash": payload_hash,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }, indent=2)
+            artifact_data = json.dumps(
+                {
+                    "technique": self.TECHNIQUE_ID,
+                    "target_email": self.TARGET_EMAIL,
+                    "spoofed_sender": self.SPOOFED_SENDER,
+                    "payload_hash": payload_hash,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+                indent=2,
+            )
             self.save_artifact("phishing_evidence.json", artifact_data)
             return self.build_result(True, "Phishing email delivered successfully")
         else:
-            self.log_step("email_failed", "Could not reach mail server (may be simulated)", "simulated")
-            return self.build_result(True, "Phishing simulated (mail server not reachable in this environment)")
+            self.log_step(
+                "email_failed", "Could not reach mail server (may be simulated)", "simulated"
+            )
+            return self.build_result(
+                True, "Phishing simulated (mail server not reachable in this environment)"
+            )
 
     def _craft_phishing_email(self, payload_path: str) -> MIMEMultipart:
         """Construct the phishing email with social engineering content."""

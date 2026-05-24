@@ -41,12 +41,18 @@ class SshHijackCampaign(BaseCampaign):
             "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("ssh_hijack_results.json", json.dumps(results, indent=2))
-        return self.build_result(True, f"SSH hijacking enumeration complete. {len(sockets)} sockets found")
+        return self.build_result(
+            True, f"SSH hijacking enumeration complete. {len(sockets)} sockets found"
+        )
 
     def _find_ssh_sockets(self) -> list:
         try:
-            result = subprocess.run(["find", "/tmp", "-name", "ssh-*", "-type", "s"],
-                                    capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["find", "/tmp", "-name", "ssh-*", "-type", "s"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
             return result.stdout.splitlines() or ["/tmp/ssh-XXXXX/agent.NNNN (simulated)"]
         except Exception:
             return ["/tmp/ssh-XXXXX/agent.NNNN (simulated)"]

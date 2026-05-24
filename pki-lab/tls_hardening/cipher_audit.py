@@ -103,14 +103,22 @@ def audit(host: str, port: int = 443):
                 negotiated = cert_info.get("negotiated_version", "")
                 accepted = version_name == negotiated
             else:
-                accepted = (version_name == "TLSv1.3")  # Simulate good config
-            result = {"version": version_name, "accepted": accepted,
-                      "status": "PASS" if (version_name in ["TLSv1.3"] and accepted) or
-                                         (version_name in ["TLSv1.2"] and accepted) else
-                                "FAIL" if accepted else "PASS"}
+                accepted = version_name == "TLSv1.3"  # Simulate good config
+            result = {
+                "version": version_name,
+                "accepted": accepted,
+                "status": "PASS"
+                if (version_name in ["TLSv1.3"] and accepted)
+                or (version_name in ["TLSv1.2"] and accepted)
+                else "FAIL"
+                if accepted
+                else "PASS",
+            }
 
         icon = "✓" if result["status"] == "PASS" else "✗"
-        print(f"  [{icon}] {version_name}: {'Accepted' if result['accepted'] else 'Rejected'} — {result['status']}")
+        print(
+            f"  [{icon}] {version_name}: {'Accepted' if result['accepted'] else 'Rejected'} — {result['status']}"
+        )
         results.append(result)
 
     print()

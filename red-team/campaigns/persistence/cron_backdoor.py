@@ -38,7 +38,9 @@ class CronBackdoorCampaign(BaseCampaign):
 
         # Step 2: Install cron job
         cron_result = self._install_cron(script_path)
-        self.log_step("cron_install", f"Cron install: {cron_result['status']}", cron_result["status"])
+        self.log_step(
+            "cron_install", f"Cron install: {cron_result['status']}", cron_result["status"]
+        )
         self.simulate_delay(0.5)
 
         # Step 3: Verify persistence
@@ -78,21 +80,21 @@ echo "[$(date)] LAB beacon ping to {self.C2_IP}:{self.C2_PORT}" >> /tmp/lab_beac
     def _install_cron(self, script_path: str) -> dict:
         cron_entry = f"*/5 * * * * {script_path}\n"
         try:
-            result = subprocess.run(
-                ["crontab", "-l"],
-                capture_output=True, text=True, timeout=5
-            )
+            result = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
             current = result.stdout if result.returncode == 0 else ""
             if script_path not in current:
                 new_cron = current + cron_entry
                 subprocess.run(
-                    ["crontab", "-"],
-                    input=new_cron, capture_output=True, text=True, timeout=5
+                    ["crontab", "-"], input=new_cron, capture_output=True, text=True, timeout=5
                 )
                 return {"status": "installed", "entry": cron_entry.strip()}
             return {"status": "already_present", "entry": cron_entry.strip()}
         except Exception:
-            return {"status": "simulated", "entry": cron_entry.strip(), "note": "crontab not available in this context"}
+            return {
+                "status": "simulated",
+                "entry": cron_entry.strip(),
+                "note": "crontab not available in this context",
+            }
 
     def _verify_cron(self) -> list:
         try:
@@ -106,19 +108,19 @@ echo "[$(date)] LAB beacon ping to {self.C2_IP}:{self.C2_PORT}" >> /tmp/lab_beac
         result = super().cleanup()  # delete beacon script + log
         cron_status = "skipped"
         try:
-            current = subprocess.run(
-                ["crontab", "-l"], capture_output=True, text=True, timeout=5
-            )
+            current = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
             if current.returncode == 0 and "lab_beacon" in current.stdout:
                 purged = "\n".join(
-                    line for line in current.stdout.splitlines()
-                    if "lab_beacon" not in line
+                    line for line in current.stdout.splitlines() if "lab_beacon" not in line
                 )
                 if purged and not purged.endswith("\n"):
                     purged += "\n"
                 subprocess.run(
-                    ["crontab", "-"], input=purged or "",
-                    capture_output=True, text=True, timeout=5,
+                    ["crontab", "-"],
+                    input=purged or "",
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 cron_status = "removed"
             elif current.returncode == 0:

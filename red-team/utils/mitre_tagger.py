@@ -97,12 +97,15 @@ class MitreTagger:
 
     def get_metadata(self, technique_id: str) -> dict:
         """Return ATT&CK metadata for a given technique ID."""
-        return TECHNIQUE_METADATA.get(technique_id, {
-            "name": "Unknown Technique",
-            "tactic": "Unknown",
-            "url": f"https://attack.mitre.org/techniques/{technique_id}/",
-            "severity": "unknown",
-        })
+        return TECHNIQUE_METADATA.get(
+            technique_id,
+            {
+                "name": "Unknown Technique",
+                "tactic": "Unknown",
+                "url": f"https://attack.mitre.org/techniques/{technique_id}/",
+                "severity": "unknown",
+            },
+        )
 
     def tag_event(self, technique_id: str, event: dict) -> dict:
         """Enrich an event dict with ATT&CK metadata."""

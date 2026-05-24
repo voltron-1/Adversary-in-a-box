@@ -67,7 +67,9 @@ class VulnScanCampaign(BaseCampaign):
         }
         self.save_artifact("recon_results.json", json.dumps(results, indent=2))
 
-        return self.build_result(True, f"Reconnaissance complete. Found {len(open_ports)} ports, {len(cves)} CVEs")
+        return self.build_result(
+            True, f"Reconnaissance complete. Found {len(open_ports)} ports, {len(cves)} CVEs"
+        )
 
     def _port_scan(self, target: str) -> list:
         """Scan common ports via TCP connect."""
@@ -87,9 +89,16 @@ class VulnScanCampaign(BaseCampaign):
     def _fingerprint_services(self, target: str, ports: list) -> dict:
         """Map port numbers to common service names."""
         service_map = {
-            21: "ftp", 22: "ssh", 25: "smtp", 80: "http",
-            443: "https", 3306: "mysql", 5432: "postgresql",
-            8080: "http-alt", 8443: "https-alt", 3389: "rdp",
+            21: "ftp",
+            22: "ssh",
+            25: "smtp",
+            80: "http",
+            443: "https",
+            3306: "mysql",
+            5432: "postgresql",
+            8080: "http-alt",
+            8443: "https-alt",
+            3389: "rdp",
         }
         return {port: service_map.get(port, "unknown") for port in ports}
 
@@ -115,13 +124,35 @@ class VulnScanCampaign(BaseCampaign):
         In a real scenario this would query NVD or a vulnerability scanner.
         """
         simulated_cves = {
-            "mysql": [{"id": "CVE-2023-21980", "severity": "HIGH", "description": "MySQL privilege escalation"}],
-            "ftp": [{"id": "CVE-2023-0466", "severity": "MEDIUM", "description": "FTP path traversal"}],
-            "http": [
-                {"id": "CVE-2023-44487", "severity": "HIGH", "description": "HTTP/2 Rapid Reset (DDoS)"},
-                {"id": "CVE-2021-41773", "severity": "CRITICAL", "description": "Apache path traversal"},
+            "mysql": [
+                {
+                    "id": "CVE-2023-21980",
+                    "severity": "HIGH",
+                    "description": "MySQL privilege escalation",
+                }
             ],
-            "ssh": [{"id": "CVE-2023-38408", "severity": "CRITICAL", "description": "OpenSSH forwarding vuln"}],
+            "ftp": [
+                {"id": "CVE-2023-0466", "severity": "MEDIUM", "description": "FTP path traversal"}
+            ],
+            "http": [
+                {
+                    "id": "CVE-2023-44487",
+                    "severity": "HIGH",
+                    "description": "HTTP/2 Rapid Reset (DDoS)",
+                },
+                {
+                    "id": "CVE-2021-41773",
+                    "severity": "CRITICAL",
+                    "description": "Apache path traversal",
+                },
+            ],
+            "ssh": [
+                {
+                    "id": "CVE-2023-38408",
+                    "severity": "CRITICAL",
+                    "description": "OpenSSH forwarding vuln",
+                }
+            ],
         }
         found_cves = []
         for service in services.values():

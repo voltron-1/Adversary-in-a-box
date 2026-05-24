@@ -23,7 +23,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).parent.parent
-GENERATOR = "scripts/lab/student-env.sh"   # relative -- bash respects cwd
+GENERATOR = "scripts/lab/student-env.sh"  # relative -- bash respects cwd
 
 
 def _generate(student_id: str) -> dict[str, str]:
@@ -31,7 +31,9 @@ def _generate(student_id: str) -> dict[str, str]:
     proc = subprocess.run(
         ["bash", GENERATOR, student_id],
         cwd=str(REPO_ROOT),
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     if proc.returncode != 0:
         raise AssertionError(
@@ -59,8 +61,18 @@ class TestStudentEnvRoundTrip(unittest.TestCase):
     # time; if you add more, run the test and rebalance.
     # (iris + jack both hash to slot 97 -- see test_known_collision_pair
     # below for the explicit limitation case.)
-    STUDENTS = ["alice", "bob", "charlie", "diana", "eve", "frank",
-                "grace", "henry", "mallory", "oscar"]
+    STUDENTS = [
+        "alice",
+        "bob",
+        "charlie",
+        "diana",
+        "eve",
+        "frank",
+        "grace",
+        "henry",
+        "mallory",
+        "oscar",
+    ]
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -69,21 +81,24 @@ class TestStudentEnvRoundTrip(unittest.TestCase):
     def test_every_student_gets_unique_project_name(self) -> None:
         names = [e["COMPOSE_PROJECT_NAME"] for e in self.envs.values()]
         self.assertEqual(
-            len(set(names)), len(names),
+            len(set(names)),
+            len(names),
             f"duplicate COMPOSE_PROJECT_NAME: {names}",
         )
 
     def test_no_two_students_share_lab_net_prefix(self) -> None:
         prefixes = [e["LAB_NET_PREFIX"] for e in self.envs.values()]
         self.assertEqual(
-            len(set(prefixes)), len(prefixes),
+            len(set(prefixes)),
+            len(prefixes),
             f"duplicate LAB_NET_PREFIX: {prefixes}",
         )
 
     def test_no_two_students_share_quarantine_prefix(self) -> None:
         prefixes = [e["QUARANTINE_NET_PREFIX"] for e in self.envs.values()]
         self.assertEqual(
-            len(set(prefixes)), len(prefixes),
+            len(set(prefixes)),
+            len(prefixes),
             f"duplicate QUARANTINE_NET_PREFIX: {prefixes}",
         )
 
@@ -97,7 +112,8 @@ class TestStudentEnvRoundTrip(unittest.TestCase):
             for key in ("LAB_NET_PREFIX", "QUARANTINE_NET_PREFIX"):
                 prefix = env[key]
                 self.assertNotIn(
-                    prefix, seen,
+                    prefix,
+                    seen,
                     f"{sid} {key}={prefix} collides with another student",
                 )
                 seen.add(prefix)
@@ -108,8 +124,13 @@ class TestStudentEnvRoundTrip(unittest.TestCase):
         # SCOREBOARD_PORT, KIBANA_PORT, ELASTICSEARCH_PORT,
         # PKI_NGINX_PORT -- five ports plus headroom -> 10-port block
         # ought to be collision-free.
-        port_keys = ["BLUE_TEAM_PORT", "SCOREBOARD_PORT", "KIBANA_PORT",
-                     "ELASTICSEARCH_PORT", "PKI_NGINX_PORT"]
+        port_keys = [
+            "BLUE_TEAM_PORT",
+            "SCOREBOARD_PORT",
+            "KIBANA_PORT",
+            "ELASTICSEARCH_PORT",
+            "PKI_NGINX_PORT",
+        ]
         all_bindings: list[tuple[str, str, int]] = []
         for sid, env in self.envs.items():
             for key in port_keys:
@@ -118,12 +139,12 @@ class TestStudentEnvRoundTrip(unittest.TestCase):
 
         # Group by port -- any collision is a failure.
         from collections import defaultdict
+
         by_port: dict[int, list[str]] = defaultdict(list)
         for sid, key, port in all_bindings:
             by_port[port].append(f"{sid}:{key}")
 
-        collisions = {p: holders for p, holders in by_port.items()
-                      if len(holders) > 1}
+        collisions = {p: holders for p, holders in by_port.items() if len(holders) > 1}
         self.assertFalse(
             collisions,
             f"port collisions across student stacks: {collisions}",
@@ -133,10 +154,13 @@ class TestStudentEnvRoundTrip(unittest.TestCase):
         proc = subprocess.run(
             ["bash", GENERATOR, "Alice"],
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         self.assertNotEqual(
-            proc.returncode, 0,
+            proc.returncode,
+            0,
             "generator should reject uppercase IDs (regex is ^[a-z0-9]+...$)",
         )
 
@@ -151,7 +175,8 @@ class TestStudentEnvRoundTrip(unittest.TestCase):
         a = _generate("iris")
         b = _generate("jack")
         self.assertEqual(
-            a["LAB_NET_PREFIX"], b["LAB_NET_PREFIX"],
+            a["LAB_NET_PREFIX"],
+            b["LAB_NET_PREFIX"],
             "iris/jack used to collide on slot 97. If they no longer do, "
             "update this test to pick a new colliding pair (or document "
             "that the generator is now collision-free).",
@@ -161,10 +186,13 @@ class TestStudentEnvRoundTrip(unittest.TestCase):
         proc = subprocess.run(
             ["bash", GENERATOR],
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         self.assertNotEqual(
-            proc.returncode, 0,
+            proc.returncode,
+            0,
             "generator should require a student id arg",
         )
 

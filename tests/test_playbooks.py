@@ -1,6 +1,7 @@
 """
 tests/test_playbooks.py — Unit tests for IR playbook engine and playbooks
 """
+
 import sys
 import os
 import tempfile
@@ -9,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 # Add blue-team to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'blue-team'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "blue-team"))
 
 PLAYBOOKS_DIR = Path(__file__).parent.parent / "blue-team" / "response" / "playbooks"
 
@@ -20,6 +21,7 @@ class TestPlaybookEngine(unittest.TestCase):
     def _make_engine(self, playbook_name):
         sys.path.insert(0, str(Path(__file__).parent.parent / "blue-team"))
         from response.playbook_engine import PlaybookEngine
+
         return PlaybookEngine(playbook_name)
 
     def test_phishing_playbook_loads(self):
@@ -43,6 +45,7 @@ class TestPlaybookEngine(unittest.TestCase):
 
     def test_unknown_playbook_raises_file_not_found(self):
         from response.playbook_engine import PlaybookEngine
+
         with self.assertRaises(FileNotFoundError):
             PlaybookEngine("nonexistent_playbook")
 
@@ -58,6 +61,7 @@ class TestPlaybookEngine(unittest.TestCase):
         # Run with empty context — log steps don't need real scripts
         with tempfile.TemporaryDirectory() as tmpdir:
             import response.playbook_engine as pe
+
             original = pe.EVIDENCE_DIR
             pe.EVIDENCE_DIR = Path(tmpdir)
             summary = engine.execute({"attacker_ip": "1.2.3.4", "affected_host": "10.0.0.1"})
@@ -88,16 +92,17 @@ class TestCleanupPersistenceAction(unittest.TestCase):
     def _make_engine(self, playbook_name="lateral_movement_ir"):
         sys.path.insert(0, str(Path(__file__).parent.parent / "blue-team"))
         from response.playbook_engine import PlaybookEngine
+
         return PlaybookEngine(playbook_name)
 
     def test_cleanup_resolves_container_then_execs_runner(self):
         engine = self._make_engine()
         # Two subprocess.run results -- ps first, then exec.
-        ps_result = MagicMock(stdout="adversary-in-a-box-red-team-1\n",
-                              returncode=0)
+        ps_result = MagicMock(stdout="adversary-in-a-box-red-team-1\n", returncode=0)
         exec_result = MagicMock(stdout="all good", stderr="", returncode=0)
-        with patch("response.playbook_engine.subprocess.run",
-                   side_effect=[ps_result, exec_result]) as run_mock:
+        with patch(
+            "response.playbook_engine.subprocess.run", side_effect=[ps_result, exec_result]
+        ) as run_mock:
             result = engine._cleanup_persistence(
                 {"action": "cleanup_persistence", "service": "red-team"},
                 {},
@@ -123,10 +128,10 @@ class TestCleanupPersistenceAction(unittest.TestCase):
     def test_cleanup_returns_failure_when_no_container_running(self):
         engine = self._make_engine()
         ps_result = MagicMock(stdout="\n", returncode=0)
-        with patch("response.playbook_engine.subprocess.run",
-                   return_value=ps_result):
+        with patch("response.playbook_engine.subprocess.run", return_value=ps_result):
             result = engine._cleanup_persistence(
-                {"action": "cleanup_persistence", "service": "red-team"}, {},
+                {"action": "cleanup_persistence", "service": "red-team"},
+                {},
             )
         self.assertFalse(result["success"])
         self.assertIn("red-team", result["output"])
@@ -134,21 +139,23 @@ class TestCleanupPersistenceAction(unittest.TestCase):
     def test_cleanup_default_service_is_red_team(self):
         engine = self._make_engine()
         ps_result = MagicMock(stdout="\n", returncode=0)
-        with patch("response.playbook_engine.subprocess.run",
-                   return_value=ps_result) as run_mock:
+        with patch("response.playbook_engine.subprocess.run", return_value=ps_result) as run_mock:
             engine._cleanup_persistence({"action": "cleanup_persistence"}, {})
         ps_cmd = run_mock.call_args_list[0].args[0]
-        self.assertIn("label=com.docker.compose.service=red-team", ps_cmd,
-                      "step without explicit service should default to red-team")
+        self.assertIn(
+            "label=com.docker.compose.service=red-team",
+            ps_cmd,
+            "step without explicit service should default to red-team",
+        )
 
     def test_cleanup_surfaces_nonzero_exec_returncode(self):
         engine = self._make_engine()
         ps_result = MagicMock(stdout="container-name\n", returncode=0)
         exec_result = MagicMock(stdout="", stderr="oops", returncode=2)
-        with patch("response.playbook_engine.subprocess.run",
-                   side_effect=[ps_result, exec_result]):
+        with patch("response.playbook_engine.subprocess.run", side_effect=[ps_result, exec_result]):
             result = engine._cleanup_persistence(
-                {"action": "cleanup_persistence", "service": "red-team"}, {},
+                {"action": "cleanup_persistence", "service": "red-team"},
+                {},
             )
         self.assertFalse(result["success"])
         self.assertEqual(result["returncode"], 2)
@@ -167,6 +174,7 @@ class TestPlaybookYAMLSchema(unittest.TestCase):
 
     def test_all_playbooks_have_valid_schema(self):
         import yaml
+
         for name in self.PLAYBOOKS:
             path = PLAYBOOKS_DIR / f"{name}.yml"
             with open(path) as f:
@@ -180,27 +188,32 @@ class TestPlaybookYAMLSchema(unittest.TestCase):
 
     def test_playbook_severities_are_valid(self):
         import yaml
+
         valid_severities = {"low", "medium", "high", "critical"}
         for name in self.PLAYBOOKS:
             path = PLAYBOOKS_DIR / f"{name}.yml"
             with open(path) as f:
                 data = yaml.safe_load(f)
-            self.assertIn(data["severity"], valid_severities,
-                          f"{name}: invalid severity '{data['severity']}'")
+            self.assertIn(
+                data["severity"], valid_severities, f"{name}: invalid severity '{data['severity']}'"
+            )
 
     def test_playbook_step_actions_are_valid(self):
         import yaml
+
         # Audit-2 Gap #4 adds cleanup_persistence — the action handler is in
         # response/playbook_engine.py:_cleanup_persistence.
-        valid_actions = {"log", "run_script", "collect_evidence", "notify",
-                         "cleanup_persistence"}
+        valid_actions = {"log", "run_script", "collect_evidence", "notify", "cleanup_persistence"}
         for name in self.PLAYBOOKS:
             path = PLAYBOOKS_DIR / f"{name}.yml"
             with open(path) as f:
                 data = yaml.safe_load(f)
             for step in data["steps"]:
-                self.assertIn(step["action"], valid_actions,
-                              f"{name} step '{step['name']}': invalid action '{step['action']}'")
+                self.assertIn(
+                    step["action"],
+                    valid_actions,
+                    f"{name} step '{step['name']}': invalid action '{step['action']}'",
+                )
 
 
 class TestSigmaRules(unittest.TestCase):
@@ -213,10 +226,7 @@ class TestSigmaRules(unittest.TestCase):
         # Phase B1: rules are now auto-discovered so a new campaign's paired
         # Sigma rule is validated automatically without touching this test.
         # `compiled/` is gitignored build output; skip it.
-        cls.RULES = sorted(
-            p.name for p in cls.SIGMA_DIR.glob("*.yml")
-            if "compiled" not in p.parts
-        )
+        cls.RULES = sorted(p.name for p in cls.SIGMA_DIR.glob("*.yml") if "compiled" not in p.parts)
         assert cls.RULES, "no Sigma rules found in blue-team/detection/sigma/"
 
     def test_all_sigma_rules_exist(self):
@@ -226,6 +236,7 @@ class TestSigmaRules(unittest.TestCase):
 
     def test_sigma_rules_have_valid_schema(self):
         import yaml
+
         required_fields = ["title", "id", "status", "description", "tags", "logsource", "detection"]
         for rule in self.RULES:
             path = self.SIGMA_DIR / rule
@@ -236,14 +247,14 @@ class TestSigmaRules(unittest.TestCase):
 
     def test_sigma_rules_have_attack_tags(self):
         import yaml
+
         for rule in self.RULES:
             path = self.SIGMA_DIR / rule
             with open(path) as f:
                 data = yaml.safe_load(f)
             tags = data.get("tags", [])
             attack_tags = [t for t in tags if t.startswith("attack.")]
-            self.assertGreater(len(attack_tags), 0,
-                               f"{rule}: must have at least one ATT&CK tag")
+            self.assertGreater(len(attack_tags), 0, f"{rule}: must have at least one ATT&CK tag")
 
 
 if __name__ == "__main__":
