@@ -123,6 +123,16 @@ CAMPAIGNS = {
         "description": "Persistence via cron backdoor + SSH authorized keys",
         "domain": 1,
     },
+    # Phase B1d: ransomware simulation (T1486). Renames decoys in a
+    # known directory with a .locked suffix + drops a ransom note.
+    # Fully reversible -- cleanup() unrenames and clears the dir.
+    "ransomware": {
+        "module": "campaigns.impact.ransomware_sim",
+        "class": "RansomwareSimCampaign",
+        "techniques": ["T1486"],
+        "description": "Ransomware simulation -- rename decoys + drop ransom note",
+        "domain": 1,
+    },
     "full-killchain": {
         "module": None,  # Runs all campaigns in sequence
         "class": None,

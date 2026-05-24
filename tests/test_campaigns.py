@@ -140,6 +140,60 @@ class TestDnsTunnelCampaign(unittest.TestCase):
         self.assertTrue(result["success"])
 
 
+class TestRansomwareSimCampaign(unittest.TestCase):
+    """Phase B1d: T1486 Data Encrypted for Impact (simulated)."""
+
+    def setUp(self):
+        # Each test gets a fresh decoy dir.
+        from campaigns.impact.ransomware_sim import RansomwareSimCampaign
+        import shutil
+        if os.path.isdir(RansomwareSimCampaign.DECOY_DIR):
+            shutil.rmtree(RansomwareSimCampaign.DECOY_DIR)
+
+    def test_ransomware_technique_id(self):
+        from campaigns.impact.ransomware_sim import RansomwareSimCampaign
+        c = RansomwareSimCampaign(target="lab",
+                                  logger=MagicMock(), tagger=MagicMock())
+        self.assertEqual(c.TECHNIQUE_ID, "T1486")
+        self.assertEqual(c.TACTIC, "Impact")
+
+    def test_ransomware_run_renames_and_drops_note(self):
+        from campaigns.impact.ransomware_sim import RansomwareSimCampaign
+        c = RansomwareSimCampaign(target="lab",
+                                  logger=MagicMock(), tagger=MagicMock())
+        result = c.run()
+        self.assertTrue(result["success"])
+        # Every decoy should be renamed + the ransom note dropped.
+        for name in RansomwareSimCampaign.DECOYS:
+            self.assertTrue(
+                os.path.exists(os.path.join(
+                    RansomwareSimCampaign.DECOY_DIR,
+                    name + RansomwareSimCampaign.LOCKED_EXT)),
+                f"missing .locked rename for {name}",
+            )
+        note = os.path.join(RansomwareSimCampaign.DECOY_DIR,
+                            RansomwareSimCampaign.NOTE_FILENAME)
+        self.assertTrue(os.path.exists(note))
+        with open(note) as f:
+            self.assertIn("LAB SIMULATION", f.read())
+
+    def test_ransomware_cleanup_restores_and_clears_dir(self):
+        from campaigns.impact.ransomware_sim import RansomwareSimCampaign
+        c = RansomwareSimCampaign(target="lab",
+                                  logger=MagicMock(), tagger=MagicMock())
+        c.run()
+        cleanup = c.cleanup()
+        # Cleanup contract: defaults to removing DECOY_DIR entirely.
+        self.assertFalse(os.path.isdir(RansomwareSimCampaign.DECOY_DIR))
+        self.assertEqual(cleanup["errors"], [])
+
+    def test_ransomware_registered_in_runner(self):
+        os.environ.setdefault("LOG_DIR", tempfile.gettempdir())
+        import runner
+        self.assertIn("ransomware", runner.CAMPAIGNS)
+        self.assertEqual(runner.TECHNIQUE_MAP.get("T1486"), "ransomware")
+
+
 class TestMalwareDropCampaign(unittest.TestCase):
     """Phase B1c: T1204 User Execution / malware drop."""
 
