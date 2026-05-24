@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-forensics/chain_of_custody.py — SHA-256 Chain of Custody for Evidence Files
+forensics/chain_of_custody.py -- SHA-256 Chain of Custody for Evidence Files
 
 Hashes all evidence files and maintains a tamper-evident JSON custody log.
 Usage: python chain_of_custody.py --hash-dir /evidence [--verify]
@@ -45,7 +45,7 @@ def hash_directory(directory: Path) -> dict:
                     "size_bytes": stat.st_size,
                     "modified": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
                 })
-                print(f"  [✓] {path.name}: {file_hash}")
+                print(f"  [ok] {path.name}: {file_hash}")
             except (PermissionError, OSError) as e:
                 print(f"  [!] Could not hash {path}: {e}")
 
@@ -66,15 +66,15 @@ def verify_manifest(custody_path: Path) -> bool:
     for entry in manifest["files"]:
         full_path = base_dir / entry["path"]
         if not full_path.exists():
-            print(f"  [✗] MISSING: {entry['path']}")
+            print(f"  [FAIL] MISSING: {entry['path']}")
             all_ok = False
             continue
 
         current_hash = sha256_file(full_path)
         if current_hash == entry["sha256"]:
-            print(f"  [✓] INTACT: {entry['path']}")
+            print(f"  [ok] INTACT: {entry['path']}")
         else:
-            print(f"  [✗] TAMPERED: {entry['path']}")
+            print(f"  [FAIL] TAMPERED: {entry['path']}")
             print(f"      Expected: {entry['sha256']}")
             print(f"      Got:      {current_hash}")
             all_ok = False
@@ -104,7 +104,7 @@ def main():
             print(f"[!] No custody manifest found at: {custody_path}")
             return
         ok = verify_manifest(custody_path)
-        print(f"\n{'[✓] All files intact.' if ok else '[✗] INTEGRITY FAILURE — evidence may be compromised!'}")
+        print(f"\n{'[ok] All files intact.' if ok else '[FAIL] INTEGRITY FAILURE -- evidence may be compromised!'}")
         return
 
     print(f"\n[+] Hashing evidence in: {args.hash_dir}\n")
@@ -113,7 +113,7 @@ def main():
     with open(custody_path, "w") as f:
         json.dump(manifest, f, indent=2)
 
-    print(f"\n[✓] Chain of custody manifest saved: {custody_path}")
+    print(f"\n[ok] Chain of custody manifest saved: {custody_path}")
     print(f"[i] Total files hashed: {manifest['total_files']}")
     print(f"[i] Timestamp: {manifest['timestamp']}")
 

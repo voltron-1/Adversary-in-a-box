@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 blue-team/response/actions/collect_evidence.py
-Forensic artifact collector — gathers logs and hashes them for chain of custody.
+Forensic artifact collector -- gathers logs and hashes them for chain of custody.
 """
 
 import os
@@ -53,18 +53,18 @@ def collect():
                 else:
                     shutil.copy2(src, dest)
                     manifest["artifacts"].append({"path": str(dest), "sha256": sha256_file(dest)})
-                print(f"  [✓] Collected: {src}")
+                print(f"  [ok] Collected: {src}")
             except Exception as e:
                 print(f"  [!] Could not collect {src}: {e}")
         else:
-            print(f"  [–] Not found: {src}")
+            print(f"  [--] Not found: {src}")
 
     manifest_path = session_dir / "manifest.json"
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
 
-    print(f"\n[✓] Evidence collected: {session_dir}")
-    print(f"[✓] Manifest: {manifest_path}")
+    print(f"\n[ok] Evidence collected: {session_dir}")
+    print(f"[ok] Manifest: {manifest_path}")
     print(f"[i] Artifacts: {len(manifest['artifacts'])}")
     return manifest
 

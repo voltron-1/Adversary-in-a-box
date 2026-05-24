@@ -1,5 +1,5 @@
 """
-blue-team/response/playbook_engine.py — IR Playbook Execution Engine
+blue-team/response/playbook_engine.py -- IR Playbook Execution Engine
 
 Loads and executes YAML-defined incident response playbooks.
 """
@@ -46,7 +46,7 @@ class PlaybookEngine:
             result = self._execute_step(step, context)
             results.append(result)
             if not result["success"] and step.get("required", False):
-                print(f"[IR] CRITICAL step failed: {step['name']} — halting playbook")
+                print(f"[IR] CRITICAL step failed: {step['name']} -- halting playbook")
                 break
 
         summary = {
@@ -70,7 +70,7 @@ class PlaybookEngine:
     def _execute_step(self, step: dict, context: dict) -> dict:
         step_name = step.get("name", "Unknown")
         action = step.get("action", "log")
-        print(f"  → {step_name}...")
+        print(f"  -> {step_name}...")
 
         try:
             if action == "run_script":
@@ -88,13 +88,13 @@ class PlaybookEngine:
 
             result["step"] = step_name
             result["timestamp"] = datetime.now(timezone.utc).isoformat()
-            print(f"    ✓ {result.get('output', 'Done')}")
+            print(f"    [ok] {result.get('output', 'Done')}")
             return result
 
         except Exception as exc:
             error = {"step": step_name, "success": False, "error": str(exc),
                      "timestamp": datetime.now(timezone.utc).isoformat()}
-            print(f"    ✗ Failed: {exc}")
+            print(f"    [FAIL] Failed: {exc}")
             return error
 
     def _run_script(self, step: dict, context: dict) -> dict:
@@ -120,7 +120,7 @@ class PlaybookEngine:
 
     def _notify(self, step: dict, context: dict) -> dict:
         msg = step.get("message", "Alert").format(**context)
-        print(f"    📢 NOTIFY: {msg}")
+        print(f"    NOTIFY: {msg}")
         return {"success": True, "output": f"Notification sent: {msg}"}
 
     def _cleanup_persistence(self, step: dict, context: dict) -> dict:
