@@ -50,6 +50,15 @@ steps:
     message: "CRITICAL: Lateral movement detected. Pivot host isolated. Credentials reset."
     required: false
 
+  # Audit-2 Gap #4 / OQ-1: roll back any persistent state the attacker left
+  # behind (cron entries, planted SSH keys, beacon scripts) before restoring
+  # the pivot to lab-net. Without this the next exercise inherits the
+  # previous attacker's persistence.
+  - name: "Roll back attacker persistence (cron, ssh keys, beacons)"
+    action: cleanup_persistence
+    service: red-team
+    required: false
+
   # OQ-3 (ADR 0001): every playbook that isolates a host must restore it
   # before the playbook terminates. Without this step the host stays on the
   # quarantine network and forensic collection cannot continue normally.

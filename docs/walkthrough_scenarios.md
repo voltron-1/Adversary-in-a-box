@@ -174,10 +174,12 @@ Plants:
 # Snapshot the persistence artifacts as evidence
 docker compose exec blue-team python response/actions/collect_evidence.py
 
-# Remove the planted artifacts via the engine (uses cleanup hooks from OQ-1)
+# Remove the planted artifacts via the engine — lateral_movement_ir.yml
+# ends with a cleanup_persistence step (audit-2 Gap #4) that shells into
+# the red-team container and runs `runner.py --cleanup-all`.
 docker compose exec blue-team python -c \
   "from response.playbook_engine import PlaybookEngine; \
-   PlaybookEngine('ransomware_ir').execute({'pivot_host':'victim-web'})"
+   PlaybookEngine('lateral_movement_ir').execute({'pivot_host':'victim-web','attacker_ip':'172.20.0.10'})"
 ```
 
 ### Expected SIEM events

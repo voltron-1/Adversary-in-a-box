@@ -111,7 +111,10 @@ class TestPlaybookYAMLSchema(unittest.TestCase):
 
     def test_playbook_step_actions_are_valid(self):
         import yaml
-        valid_actions = {"log", "run_script", "collect_evidence", "notify"}
+        # Audit-2 Gap #4 adds cleanup_persistence — the action handler is in
+        # response/playbook_engine.py:_cleanup_persistence.
+        valid_actions = {"log", "run_script", "collect_evidence", "notify",
+                         "cleanup_persistence"}
         for name in self.PLAYBOOKS:
             path = PLAYBOOKS_DIR / f"{name}.yml"
             with open(path) as f:

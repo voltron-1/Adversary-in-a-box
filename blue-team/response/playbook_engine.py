@@ -79,6 +79,8 @@ class PlaybookEngine:
                 result = {"output": step.get("message", "Logged"), "success": True}
             elif action == "collect_evidence":
                 result = self._collect_evidence(step, context)
+            elif action == "cleanup_persistence":
+                result = self._cleanup_persistence(step, context)
             elif action == "notify":
                 result = self._notify(step, context)
             else:
@@ -120,3 +122,37 @@ class PlaybookEngine:
         msg = step.get("message", "Alert").format(**context)
         print(f"    📢 NOTIFY: {msg}")
         return {"success": True, "output": f"Notification sent: {msg}"}
+
+    def _cleanup_persistence(self, step: dict, context: dict) -> dict:
+        """
+        Audit-2 Gap #4: invoke `runner.py --cleanup-all` on the red-team
+        container to roll back persistent state (cron entries, planted SSH
+        keys, beacon scripts). Requires that blue-team has /var/run/docker.sock
+        mounted (the same OQ-3 capability isolate_host.sh needs).
+        """
+        service = step.get("service", "red-team")
+        # Find the compose-managed container name for the target service so
+        # this works regardless of the per-student COMPOSE_PROJECT_NAME.
+        try:
+            ps = subprocess.run(
+                ["docker", "ps", "--filter",
+                 f"label=com.docker.compose.service={service}",
+                 "--format", "{{.Names}}"],
+                capture_output=True, text=True, timeout=10,
+            )
+            names = [n for n in ps.stdout.split("\n") if n.strip()]
+            if not names:
+                return {"success": False,
+                        "output": f"No running container for service '{service}'"}
+            container = names[0]
+            proc = subprocess.run(
+                ["docker", "exec", container, "python", "runner.py", "--cleanup-all"],
+                capture_output=True, text=True, timeout=60,
+            )
+            return {
+                "success": proc.returncode == 0,
+                "output": (proc.stdout or proc.stderr).strip()[:500],
+                "returncode": proc.returncode,
+            }
+        except Exception as exc:
+            return {"success": False, "output": f"cleanup_persistence failed: {exc}"}

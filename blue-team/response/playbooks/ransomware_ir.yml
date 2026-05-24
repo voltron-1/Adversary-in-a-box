@@ -54,3 +54,10 @@ steps:
     action: log
     message: "Initiating recovery process from verified clean backup"
     required: false
+
+  # Audit-2 Gap #4 / OQ-1: scrub any persistence the attacker may have
+  # planted before encryption (cron entries, ssh keys, beacon scripts).
+  - name: "Roll back attacker persistence (cron, ssh keys, beacons)"
+    action: cleanup_persistence
+    service: red-team
+    required: false
