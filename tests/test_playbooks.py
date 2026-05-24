@@ -76,6 +76,86 @@ class TestPlaybookEngine(unittest.TestCase):
             self.assertIn("action", step, f"Step missing 'action': {step}")
 
 
+class TestCleanupPersistenceAction(unittest.TestCase):
+    """
+    Phase C5: cover the playbook engine's cleanup_persistence action
+    handler (audit-2 Gap #4). The handler does two subprocess calls:
+      1. docker ps --filter label=com.docker.compose.service=<service>
+         to resolve the compose-managed container name
+      2. docker exec <container> python runner.py --cleanup-all
+    These tests mock subprocess.run and assert the invocation shape.
+    """
+
+    def _make_engine(self, playbook_name="lateral_movement_ir"):
+        sys.path.insert(0, str(Path(__file__).parent.parent / "blue-team"))
+        from response.playbook_engine import PlaybookEngine
+        return PlaybookEngine(playbook_name)
+
+    def test_cleanup_resolves_container_then_execs_runner(self):
+        engine = self._make_engine()
+        # Two subprocess.run results -- ps first, then exec.
+        ps_result = MagicMock(stdout="adversary-in-a-box-red-team-1\n",
+                              returncode=0)
+        exec_result = MagicMock(stdout="all good", stderr="", returncode=0)
+        with patch("response.playbook_engine.subprocess.run",
+                   side_effect=[ps_result, exec_result]) as run_mock:
+            result = engine._cleanup_persistence(
+                {"action": "cleanup_persistence", "service": "red-team"},
+                {},
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["returncode"], 0)
+
+        # First call: docker ps filter by compose service label.
+        ps_call = run_mock.call_args_list[0]
+        ps_cmd = ps_call.args[0]
+        self.assertEqual(ps_cmd[0], "docker")
+        self.assertEqual(ps_cmd[1], "ps")
+        self.assertIn("label=com.docker.compose.service=red-team", ps_cmd)
+
+        # Second call: docker exec on the resolved container name.
+        exec_call = run_mock.call_args_list[1]
+        exec_cmd = exec_call.args[0]
+        self.assertEqual(exec_cmd[:2], ["docker", "exec"])
+        self.assertEqual(exec_cmd[2], "adversary-in-a-box-red-team-1")
+        self.assertIn("--cleanup-all", exec_cmd)
+
+    def test_cleanup_returns_failure_when_no_container_running(self):
+        engine = self._make_engine()
+        ps_result = MagicMock(stdout="\n", returncode=0)
+        with patch("response.playbook_engine.subprocess.run",
+                   return_value=ps_result):
+            result = engine._cleanup_persistence(
+                {"action": "cleanup_persistence", "service": "red-team"}, {},
+            )
+        self.assertFalse(result["success"])
+        self.assertIn("red-team", result["output"])
+
+    def test_cleanup_default_service_is_red_team(self):
+        engine = self._make_engine()
+        ps_result = MagicMock(stdout="\n", returncode=0)
+        with patch("response.playbook_engine.subprocess.run",
+                   return_value=ps_result) as run_mock:
+            engine._cleanup_persistence({"action": "cleanup_persistence"}, {})
+        ps_cmd = run_mock.call_args_list[0].args[0]
+        self.assertIn("label=com.docker.compose.service=red-team", ps_cmd,
+                      "step without explicit service should default to red-team")
+
+    def test_cleanup_surfaces_nonzero_exec_returncode(self):
+        engine = self._make_engine()
+        ps_result = MagicMock(stdout="container-name\n", returncode=0)
+        exec_result = MagicMock(stdout="", stderr="oops", returncode=2)
+        with patch("response.playbook_engine.subprocess.run",
+                   side_effect=[ps_result, exec_result]):
+            result = engine._cleanup_persistence(
+                {"action": "cleanup_persistence", "service": "red-team"}, {},
+            )
+        self.assertFalse(result["success"])
+        self.assertEqual(result["returncode"], 2)
+        self.assertEqual(result["output"], "oops")
+
+
 class TestPlaybookYAMLSchema(unittest.TestCase):
     """Validate YAML structure of all playbook files."""
 
