@@ -210,27 +210,39 @@ class TestResetScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             h = ResetScriptHarness(Path(tmp), red_team_running=False)
             result = h.run()
+            calls = h.calls()
+            debug = (
+                f"\n--- rc:{result.returncode} ---\nstdout:\n{result.stdout}"
+                f"\nstderr:\n{result.stderr}\ncalls ({len(calls)}):\n"
+                + "\n".join(calls) + "\n"
+            )
 
-        self.assertEqual(result.returncode, 0)
-        calls = h.calls()
+        self.assertEqual(result.returncode, 0, debug)
         # No cleanup-all call expected when red-team isn't in `compose ps`.
-        self.assertFalse([c for c in calls if "runner.py --cleanup-all" in c],
-                         "cleanup-all should NOT have been called when red-team is not running")
+        self.assertFalse(
+            [c for c in calls if "runner.py --cleanup-all" in c],
+            f"cleanup-all should NOT have been called when red-team is not running{debug}")
         # But compose down still runs.
-        self.assertTrue([c for c in calls if "compose" in c and "down" in c],
-                        "compose down should still run when red-team isn't running")
+        self.assertTrue(
+            [c for c in calls if "compose" in c and "down" in c],
+            f"compose down should still run when red-team isn't running{debug}")
 
     def test_compose_forward_flags_pass_to_start_sh(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             h = ResetScriptHarness(Path(tmp))
             result = h.run("--profile", "pki")
+            calls = h.calls()
+            debug = (
+                f"\n--- rc:{result.returncode} ---\nstdout:\n{result.stdout}"
+                f"\nstderr:\n{result.stderr}\ncalls ({len(calls)}):\n"
+                + "\n".join(calls) + "\n"
+            )
 
-        self.assertEqual(result.returncode, 0)
-        calls = h.calls()
+        self.assertEqual(result.returncode, 0, debug)
         start_calls = [c for c in calls if c.startswith("start.sh")]
-        self.assertEqual(len(start_calls), 1)
+        self.assertEqual(len(start_calls), 1, debug)
         self.assertIn("--profile pki", start_calls[0],
-                      "compose flags should forward to start.sh")
+                      f"compose flags should forward to start.sh{debug}")
 
     def test_prompt_aborts_without_assume_yes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
