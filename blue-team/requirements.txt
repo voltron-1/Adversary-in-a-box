@@ -2,7 +2,7 @@ flask==3.0.3
 requests==2.34.2
 # Phase A1: bumped from 6.0.1 — pysigma-backend-elasticsearch 1.1.6 requires
 # pyyaml>=6.0.2, conflict broke CI dependency install (run 26348906189).
-pyyaml==6.0.2
+pyyaml==6.0.3
 elasticsearch==8.13.0
 rich==13.7.1
 click==8.1.7
