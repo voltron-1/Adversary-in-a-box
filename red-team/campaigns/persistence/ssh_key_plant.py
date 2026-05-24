@@ -6,7 +6,7 @@ MITRE ATT&CK: T1098.004 | Tactic: Persistence
 import os
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -48,7 +48,7 @@ class SshKeyPlantCampaign(BaseCampaign):
             "planted_key": self.LAB_PUBLIC_KEY[:80] + "...",
             "result": plant_result,
             "detection": "Monitor ~/.ssh/authorized_keys for unauthorized modifications",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.save_artifact("ssh_key_plant_results.json", json.dumps(results, indent=2))
         return self.build_result(True, "SSH key persistence demonstrated (simulation)")

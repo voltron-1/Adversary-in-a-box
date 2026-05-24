@@ -10,7 +10,7 @@ Usage: python cipher_audit.py --host <hostname> [--port 443]
 import ssl
 import socket
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 WEAK_PROTOCOLS = {ssl.PROTOCOL_TLS_CLIENT}
@@ -69,7 +69,7 @@ def audit(host: str, port: int = 443):
     print(f"\n{'='*60}")
     print(f"  TLS Cipher Audit — Adversary-in-a-Box Lab")
     print(f"  Target: {host}:{port}")
-    print(f"  Time: {datetime.utcnow().isoformat()}")
+    print(f"  Time: {datetime.now(timezone.utc).isoformat()}")
     print(f"{'='*60}\n")
 
     # Get connection info

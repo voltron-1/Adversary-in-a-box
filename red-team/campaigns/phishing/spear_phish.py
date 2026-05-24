@@ -15,7 +15,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from datetime import datetime
+from datetime import datetime, timezone
 
 from campaigns.base_campaign import BaseCampaign
 from .payload_gen import PayloadGenerator
@@ -64,7 +64,7 @@ class SpearPhishCampaign(BaseCampaign):
                 "target_email": self.TARGET_EMAIL,
                 "spoofed_sender": self.SPOOFED_SENDER,
                 "payload_hash": payload_hash,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }, indent=2)
             self.save_artifact("phishing_evidence.json", artifact_data)
             return self.build_result(True, "Phishing email delivered successfully")

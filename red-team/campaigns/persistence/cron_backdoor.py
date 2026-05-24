@@ -6,7 +6,7 @@ MITRE ATT&CK: T1053.003 | Tactic: Persistence
 import subprocess
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -50,7 +50,7 @@ class CronBackdoorCampaign(BaseCampaign):
             "cron_entry": f"*/5 * * * * {script_path}",
             "c2": f"{self.C2_IP}:{self.C2_PORT}",
             "install_result": cron_result,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.save_artifact("cron_backdoor_results.json", json.dumps(results, indent=2))
         return self.build_result(True, "Cron persistence demonstrated (simulation)")

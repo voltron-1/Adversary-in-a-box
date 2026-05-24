@@ -5,7 +5,7 @@ MITRE ATT&CK: T1548.001 | Tactic: Privilege Escalation
 
 import subprocess
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -33,7 +33,7 @@ class SuidHuntCampaign(BaseCampaign):
             "technique": self.TECHNIQUE_ID,
             "suid_binaries": suid_bins,
             "exploitable": matches,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.save_artifact("suid_hunt_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"Found {len(matches)} exploitable SUID binaries")

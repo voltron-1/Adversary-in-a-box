@@ -7,7 +7,7 @@ import os
 import json
 import base64
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -40,7 +40,7 @@ class HttpsExfilCampaign(BaseCampaign):
             "c2_url": self.C2_URL,
             "beacon": beacon_result,
             "exfil": exfil_result,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.save_artifact("https_exfil_results.json", json.dumps(results, indent=2))
         return self.build_result(True, "HTTPS C2 exfiltration demonstrated")
@@ -58,7 +58,7 @@ class HttpsExfilCampaign(BaseCampaign):
             "user": "www-data",
             "secrets": "LAB-DEMO-ONLY-NOT-REAL-CREDENTIALS",
             "files": ["/etc/passwd (simulated)", "/var/www/html/config.php (simulated)"],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         return base64.b64encode(json.dumps(data).encode())
 

@@ -11,7 +11,7 @@ Tactic: Reconnaissance
 import os
 import json
 import socket
-from datetime import datetime
+from datetime import datetime, timezone
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -57,7 +57,7 @@ class VulnScanCampaign(BaseCampaign):
         # Save results
         results = {
             "target": target_ip,
-            "scan_time": datetime.utcnow().isoformat(),
+            "scan_time": datetime.now(timezone.utc).isoformat(),
             "open_ports": open_ports,
             "services": services,
             "banners": banners,

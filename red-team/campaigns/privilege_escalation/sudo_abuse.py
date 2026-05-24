@@ -6,7 +6,7 @@ MITRE ATT&CK: T1548.003 | Tactic: Privilege Escalation
 import subprocess
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -33,7 +33,7 @@ class SudoAbuseCampaign(BaseCampaign):
             "technique": self.TECHNIQUE_ID,
             "sudo_rules": sudo_rules,
             "gtfobins_matches": escalation_paths,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.save_artifact("privesc_sudo_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"{len(escalation_paths)} escalation paths found")

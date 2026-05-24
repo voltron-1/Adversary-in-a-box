@@ -5,7 +5,7 @@ Real-time alert triage, playbook runner, and threat overview.
 
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 
@@ -65,7 +65,7 @@ def index():
         "open": sum(1 for a in alerts if a.get("status") == "open"),
     }
     return render_template("index.html", alerts=alerts[:10], stats=stats,
-                           now=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))
+                           now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"))
 
 
 @app.route("/alerts")
@@ -112,7 +112,7 @@ def api_stats():
         "high": sum(1 for a in alerts if a.get("severity") == "high"),
         "medium": sum(1 for a in alerts if a.get("severity") == "medium"),
         "open": sum(1 for a in alerts if a.get("status") == "open"),
-        "last_updated": datetime.utcnow().isoformat(),
+        "last_updated": datetime.now(timezone.utc).isoformat(),
     })
 
 

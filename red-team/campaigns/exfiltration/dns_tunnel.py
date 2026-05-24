@@ -7,7 +7,7 @@ import os
 import base64
 import socket
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -44,14 +44,14 @@ class DnsTunnelCampaign(BaseCampaign):
             "dns_queries_generated": len(chunks),
             "chunks_sent": sent,
             "sample_queries": [f"{c}.{self.C2_DOMAIN}" for c in chunks[:3]],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.save_artifact("dns_tunnel_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"DNS tunnel demonstrated: {len(chunks)} queries generated")
 
     def _collect_payload(self) -> bytes:
         """Collect benign lab data as exfiltration payload."""
-        data = f"LAB-EXFIL-SIMULATION|{datetime.utcnow().isoformat()}|user=lab-victim|hostname=victim-web|sensitive_data=DEMO_ONLY"
+        data = f"LAB-EXFIL-SIMULATION|{datetime.now(timezone.utc).isoformat()}|user=lab-victim|hostname=victim-web|sensitive_data=DEMO_ONLY"
         return data.encode()
 
     def _encode_payload(self, payload: bytes) -> list:

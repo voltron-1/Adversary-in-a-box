@@ -6,7 +6,7 @@ MITRE ATT&CK: T1563.001 | Tactic: Lateral Movement
 import os
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -38,7 +38,7 @@ class SshHijackCampaign(BaseCampaign):
             "ssh_sockets": sockets,
             "ssh_sessions": sessions,
             "hijack_method": hijack_method,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.save_artifact("ssh_hijack_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"SSH hijacking enumeration complete. {len(sockets)} sockets found")

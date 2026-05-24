@@ -5,7 +5,7 @@ Tracks and displays red/blue team scores in real-time.
 
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request
 
@@ -43,7 +43,7 @@ SCORING_RULES = {
 def scoreboard():
     scores = _compute_scores()
     return render_template("scoreboard.html", scores=scores, rules=SCORING_RULES,
-                           now=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))
+                           now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"))
 
 
 @app.route("/api/scores")
@@ -68,7 +68,7 @@ def award_points():
         "event": event,
         "points": points,
         "detail": detail,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
     return jsonify({"awarded": points, "total": SCORES[team]["total"]})
 
@@ -98,7 +98,7 @@ def _compute_scores() -> dict:
         scores["winner"] = "red_team"
     else:
         scores["winner"] = "tie"
-    scores["last_updated"] = datetime.utcnow().isoformat()
+    scores["last_updated"] = datetime.now(timezone.utc).isoformat()
     return scores
 
 
