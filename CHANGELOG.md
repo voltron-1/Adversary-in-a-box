@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-24
+
+Phase E + tutorial deliverables. The lab is now a self-serve teaching
+artifact: first-time users have step-by-step walkthroughs for both
+sides of the kill chain, instructors have a scoring + grading guide,
+and the operator has a one-button reset for the next class period.
+
+### Added
+
+#### Phase E (Quality of life)
+- `siem/kibana/dashboards/operator-view.ndjson` — pre-built Operator
+  View dashboard with 3 Lens viz on `suricata-*` (Alerts Over Time
+  line chart, Top Alert Signatures pie, Alerts by Severity pie).
+  Auto-refreshes every 15s; 30-minute default window. `README.md`
+  in the dashboards dir explains the curl-based import.
+- `scripts/lab/reset.sh` — one-button mid-class reset that runs
+  `runner.py --cleanup-all`, `docker compose down -v` (both default
+  and pki profiles), wipes `evidence/*` + `reports/*` (keeping
+  `.gitkeep` + `README.md`), and re-runs `start.sh`. Confirmation
+  prompt by default; `AIB_RESET_ASSUME_YES=1` for batch use;
+  `--no-restart` to stop without bringing back up.
+- `tests/test_student_env.py` — 8 round-trip tests for the per-student
+  generator. Verifies unique `COMPOSE_PROJECT_NAME` / `LAB_NET_PREFIX`
+  / `QUARANTINE_NET_PREFIX` / port blocks across 10 students; rejects
+  uppercase + empty IDs. Includes
+  `test_known_collision_pair_documents_the_limitation` that pins
+  `iris+jack` as the explicit boundary case so any future hash change
+  is forced to preserve or document the new contract.
+- `docs/tutorials/SCREENCAST.md` — per-second recording script for
+  a 5-minute walkthrough (instructor records with OBS).
+
+#### Tutorial deliverables
+- `docs/tutorials/red-team.md` — 12-section attacker walkthrough.
+  45-60 min budget. Sequential bash blocks with expected-output
+  checkpoints for every campaign including the new B1 set
+  (mitm, brute-force, malware-drop, ransomware) and an explicit
+  cleanup section.
+- `docs/tutorials/blue-team.md` — 10-section defender walkthrough.
+  30-45 min budget. Covers Operator View import, triage flow,
+  per-campaign IR playbook invocation, evidence verification,
+  scoring interpretation, FP tuning.
+- `docs/tutorials/instructor.md` — 9-section operator + scoring
+  deep-dive. 60-minute class agenda recipe; class-level grading
+  rubric (A/B/C/D-F mapping); manual `/api/award` vocabulary;
+  difficulty-tuning env-var table; per-student isolation worked
+  example with the E4 collision caveat.
+- `docs/master_command_list.md` expanded to cover the 4 new B1
+  campaigns, Zeek service tail commands, Operator View dashboard
+  import curl, manual award API examples, full CI surface (ruff +
+  mypy + shellcheck + pre-commit + integration), and a "common
+  debugging commands" section.
+
+### Changed
+
+- README mission statement: dropped the unimplemented "Wazuh"
+  alternative; now says "ELK -- Elasticsearch + Logstash + Kibana"
+  to match what actually ships (Phase E5).
+- `scripts/lab/student-env.sh` header now explicitly documents the
+  128-slot hash space + birthday-paradox limit (Phase E4 fix).
+  IMPLEMENTATION_PLAN.md "256 distinct /24 pairs" commentary
+  corrected via this changelog entry.
+- `docs/tutorials/` is the new home for user-facing walkthroughs;
+  `docs/IMPLEMENTATION_PLAN.md` continues as the rolling backlog.
+
+### Test surface
+
+- Unit suite grows from 89 → 99 tests (8 new student-env tests +
+  the existing campaign / scorer / cleanup / playbook / pki /
+  suricata-coverage tests). Still passes on Python 3.11 + 3.12
+  matrix; integration tests still gated behind `AIB_RUN_INTEGRATION=1`.
+
 ## [0.1.0] — 2026-05-24
 
 First tagged release. Cuts the line at the end of Phase D from
@@ -154,5 +225,6 @@ non-exhaustive selection of the bigger ones:
   lateral-movement playbooks so attacker persistence rolls back
   automatically.
 
-[Unreleased]: https://github.com/voltron-1/Adversary-in-a-box/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/voltron-1/Adversary-in-a-box/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/voltron-1/Adversary-in-a-box/releases/tag/v0.2.0
 [0.1.0]: https://github.com/voltron-1/Adversary-in-a-box/releases/tag/v0.1.0
