@@ -29,9 +29,13 @@ RUN apt-get update -qq && \
 
 WORKDIR /app
 
-# Install Python dependencies
+# Install Python dependencies.
+# Phase F5: --break-system-packages bypasses PEP 668's
+# externally-managed-environment marker that Kali (Debian-derived) sets
+# on the system Python. The container is single-purpose so installing
+# into the system site-packages is intentional, not a footgun.
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copy application code
 COPY . .
