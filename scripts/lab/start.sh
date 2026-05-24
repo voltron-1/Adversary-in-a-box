@@ -47,7 +47,12 @@ while :; do
         exit 1
     fi
 
-    # Normalize to one object per line.
+    # Normalize to one object per line. Note: the embedded python uses
+    # local-var assignment (not inlined dict.get()) so we don't have
+    # to escape quotes inside the outer bash single-quoted `python3 -c
+    # '...'`. Escaped quotes inside an f-string expression are a
+    # SyntaxError in 3.12+ -- caught by tests/test_start_script.py
+    # during Phase F3.
     LINES="$(printf '%s\n' "$STATUS_JSON" | python3 -c '
 import json, sys
 data = sys.stdin.read().strip()
@@ -60,7 +65,10 @@ try:
 except json.JSONDecodeError:
     items = [json.loads(l) for l in data.splitlines() if l.strip()]
 for it in items:
-    print(f"{it.get(\"Service\",\"?\")}\t{it.get(\"State\",\"?\")}\t{it.get(\"Health\",\"\")}")')"
+    svc    = it.get("Service", "?")
+    state  = it.get("State", "?")
+    health = it.get("Health", "")
+    print(f"{svc}\t{state}\t{health}")')"
 
     PENDING=0
     FAILED=0
