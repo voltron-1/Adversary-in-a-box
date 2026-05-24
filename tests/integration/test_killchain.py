@@ -145,6 +145,41 @@ class TestFullKillchain(unittest.TestCase):
         running = [it for it in items if it.get("State") == "running"]
         self.assertGreater(len(running), 0, "no services reporting running")
 
+    def test_healthchecked_services_report_healthy(self) -> None:
+        # Phase F9: every service that declares a healthcheck in
+        # docker-compose.yml must end up in 'healthy' state, not just
+        # running. Phase C7 added healthchecks for elasticsearch,
+        # kibana, scoreboard; this asserts they actually transition.
+        # Other services (without a healthcheck declaration) have
+        # Health == "" and are considered healthy-by-default.
+        expected_healthchecked = {"elasticsearch", "kibana", "scoreboard"}
+
+        proc = subprocess.run(
+            ["docker", "compose", "ps", "--format", "json"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        data = proc.stdout.strip()
+        try:
+            items = json.loads(data)
+            if isinstance(items, dict):
+                items = [items]
+        except json.JSONDecodeError:
+            items = [json.loads(line) for line in data.splitlines() if line.strip()]
+
+        unhealthy = []
+        for svc in expected_healthchecked:
+            entries = [it for it in items if it.get("Service") == svc]
+            if not entries:
+                continue   # service not running -- a different test catches that
+            health = entries[0].get("Health", "")
+            if health and health != "healthy":
+                unhealthy.append(f"{svc}=Health:{health}")
+        self.assertFalse(
+            unhealthy,
+            f"healthchecked services not healthy: {unhealthy}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

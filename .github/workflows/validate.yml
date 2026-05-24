@@ -45,11 +45,40 @@ jobs:
       # the --strict treatment; the rest of the lab is runtime duck-typed.
       run: mypy --strict --no-incremental red-team/campaigns/base_campaign.py forensics/scoreboard/scorer.py
 
+    - name: Pre-commit run (all files)
+      # Phase F6: mirror the .pre-commit-config.yaml hooks in CI so local +
+      # CI agree. Already-passing ruff step above provides early-exit on
+      # most issues; this is the catch-net for trailing whitespace, EOF
+      # newlines, YAML/JSON syntax, mixed line endings, etc.
+      # Only run on one matrix row to avoid 3x duplicated work.
+      if: matrix.python-version == '3.11'
+      run: |
+        pip install pre-commit
+        pre-commit run --all-files --show-diff-on-failure
+
+    - name: Dependabot config syntax check
+      # Phase F7: validate .github/dependabot.yml stays well-formed.
+      # Caught the next "we shipped a broken dependabot config" class
+      # of regression.
+      if: matrix.python-version == '3.11'
+      run: |
+        pip install yamllint
+        yamllint -d '{extends: default, rules: {line-length: disable, comments: disable, document-start: disable, truthy: disable}}' .github/dependabot.yml
+
     - name: Validate Docker Compose (default profile)
       run: docker compose config --quiet
 
     - name: Validate Docker Compose (--profile pki)
       run: docker compose --profile pki config --quiet
+
+    - name: bash -n syntax check on shell scripts
+      # Phase F12: ShellCheck catches semantic issues; `bash -n` catches
+      # raw parser errors (missing fi/done/etc) that ShellCheck doesn't
+      # always flag. Cheap belt-and-suspenders.
+      if: matrix.python-version == '3.11'
+      run: |
+        find scripts blue-team pki-lab target-env -type f -name '*.sh' \
+            -exec bash -n {} \; -exec echo "  [ok] {}" \;
 
     - name: ShellCheck lab scripts
       uses: ludeeus/action-shellcheck@2.0.0
