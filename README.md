@@ -218,6 +218,14 @@ adversary-in-a-box/
 
 ---
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the quick-start, branch
+model, campaign/Sigma-rule templates, and CI expectations.
+Security-issue reporting is in [`SECURITY.md`](SECURITY.md).
+
+---
+
 ## Prerequisites
 
 | Tool | Minimum Version | Purpose |
