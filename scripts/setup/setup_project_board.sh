@@ -127,7 +127,7 @@ fi
 # via graphql (gh CLI cannot add single-select options directly yet).
 ensure_status_options() {
   [[ "$project_number" == "<dryrun>" ]] && { log "  [dry-run] would normalize Status field options"; return; }
-  local proj_id field_id existing want add
+  local proj_id field_id existing want
   proj_id=$(gh api graphql -f query='
     query($login:String!){ user(login:$login){ projectV2(number:'"$project_number"'){ id } } }
   ' -f login="$OWNER" --jq '.data.user.projectV2.id')
