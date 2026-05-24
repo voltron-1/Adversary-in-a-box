@@ -17,6 +17,7 @@ Asserts:
 
 from __future__ import annotations
 
+import os
 import shutil
 import stat
 import subprocess
@@ -109,11 +110,13 @@ class ResetScriptHarness:
         (tmpdir / "evidence" / "collection_old" / "stale.json").write_text("{}")
 
     def run(self, *args: str, **env_overrides: str) -> subprocess.CompletedProcess:
-        env = {
-            "PATH": f"{self.bin}:/usr/bin:/bin",
-            "HOME": str(self.tmpdir),
-            "AIB_RESET_ASSUME_YES": "1",
-        }
+        # Inherit the real environment (bash + find + grep need it) but
+        # PREPEND our stub bin/ to PATH so `docker` and `start.sh` resolve
+        # to our log-and-exit stubs first.
+        env = os.environ.copy()
+        env["PATH"] = f"{self.bin}{os.pathsep}{env.get('PATH', '')}"
+        env["HOME"] = str(self.tmpdir)
+        env["AIB_RESET_ASSUME_YES"] = "1"
         env.update(env_overrides)
         return subprocess.run(
             ["bash", "scripts/lab/reset.sh", *args],
@@ -226,13 +229,12 @@ class TestResetScript(unittest.TestCase):
     def test_prompt_aborts_without_assume_yes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             h = ResetScriptHarness(Path(tmp))
-            # Override AIB_RESET_ASSUME_YES to empty so the prompt fires.
-            # Feed it stdin == 'no'.
-            env = {
-                "PATH": f"{h.bin}:/usr/bin:/bin",
-                "HOME": str(tmp),
-                "AIB_RESET_ASSUME_YES": "",
-            }
+            # Same env handling as harness.run(), but override
+            # AIB_RESET_ASSUME_YES to empty so the prompt fires.
+            env = os.environ.copy()
+            env["PATH"] = f"{h.bin}{os.pathsep}{env.get('PATH', '')}"
+            env["HOME"] = str(tmp)
+            env["AIB_RESET_ASSUME_YES"] = ""
             result = subprocess.run(
                 ["bash", "scripts/lab/reset.sh"],
                 cwd=str(tmp),
