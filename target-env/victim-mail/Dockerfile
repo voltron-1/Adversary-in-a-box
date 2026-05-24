@@ -7,14 +7,13 @@ RUN apt-get update -qq && \
         mailutils \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Configure Postfix with permissive settings for lab
-RUN postconf -e "myhostname = victim-mail.lab.local" \
-    && postconf -e "mydomain = lab.local" \
-    && postconf -e "mynetworks = 172.20.0.0/24 127.0.0.0/8" \
-    && postconf -e "inet_interfaces = all" \
-    && postconf -e "smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, defer_unauth_destination" \
-    && postconf -e "smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, defer_unauth_destination"
+# Postfix config (incl. mynetworks) is deferred to entrypoint.sh so the
+# per-student LAB_NET_PREFIX env var actually flows through to the running
+# postconf. See Phase 0 isolation and audit-2 Gap #2.
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 25
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["postfix", "start-fg"]

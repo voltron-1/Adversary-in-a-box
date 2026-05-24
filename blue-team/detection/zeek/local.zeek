@@ -25,7 +25,13 @@ redef Log::default_logdir = "/var/log/zeek/";
 # Enable JSON output for ELK ingestion
 redef LogAscii::use_json = T;
 
-# Set home network
+# Set home network.
+# Audit-2 Gap #2: this default matches LAB_NET_PREFIX=172.20.0 from
+# .env.example. If a per-student deployment sets a different prefix, override
+# at zeek load time:
+#   zeek -i <iface> local.zeek "Site::local_nets={ 172.20.42.0/24 }"
+# (Zeek has no env-var substitution, so for per-student wiring this needs to
+# be generated from .env via a small entrypoint when zeek is added to compose.)
 redef Site::local_nets = { 172.20.0.0/24 };
 
 # Tune notice policy

@@ -149,6 +149,11 @@ services:
     networks:
       lab-net:
         ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.32
+    environment:
+      # Audit-2 Gap #2: entrypoint.sh reads this to compute postfix mynetworks
+      # so per-student LAB_NET_PREFIX changes don't leave the mail server
+      # refusing legitimate lab traffic.
+      - LAB_NET_PREFIX=${LAB_NET_PREFIX:-172.20.0}
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -171,7 +176,12 @@ services:
       - ./blue-team/detection/suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
       - ./blue-team/detection/suricata/local.rules:/etc/suricata/rules/local.rules:ro
       - /var/log/suricata:/var/log/suricata
-    command: -i ${SURICATA_IFACE:-eth0} --pidfile /var/run/suricata.pid
+    # Audit-2 Gap #2: override the baked HOME_NET in suricata.yaml so per-student
+    # LAB_NET_PREFIX flows through to the detection rules.
+    command: >
+      -i ${SURICATA_IFACE:-eth0}
+      --pidfile /var/run/suricata.pid
+      --set vars.address-groups.HOME_NET=[${LAB_NET_PREFIX:-172.20.0}.0/24]
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------

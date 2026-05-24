@@ -14,6 +14,9 @@ export {
 
     const ssh_failure_threshold: count = 5 &redef;
     const ssh_failure_window: interval = 30sec &redef;
+    # Audit-2 Gap #2: &redef so per-student LAB_NET_PREFIX deployments can
+    # override at zeek load time without forking this script:
+    #   redef LateralMovement::internal_net = 172.20.42.0/24;
     const internal_net: subnet = 172.20.0.0/24 &redef;
 }
 
