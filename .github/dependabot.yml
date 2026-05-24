@@ -1,0 +1,92 @@
+# .github/dependabot.yml -- Phase D6
+#
+# Catches the supply-chain failure mode from audit-2 Gap #8 (the lab
+# pinned pySigma-backend-elasticsearch==1.1.7 which was never published
+# to PyPI) and audit-3 Phase A1 (pyyaml==6.0.1 conflicting with the
+# pySigma 1.1.6 minor bump). Both would have been caught by weekly
+# Dependabot PRs before they hit CI.
+#
+# Three subprojects ship their own requirements.txt -- each gets its own
+# ecosystem entry so the PRs stay scoped.
+
+version: 2
+updates:
+
+  # ---- Python deps -------------------------------------------------------
+  - package-ecosystem: pip
+    directory: /red-team
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps/red-team)"
+    labels: ["dependencies", "red-team"]
+
+  - package-ecosystem: pip
+    directory: /blue-team
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps/blue-team)"
+    labels: ["dependencies", "blue-team"]
+
+  - package-ecosystem: pip
+    directory: /forensics/scoreboard
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps/forensics)"
+    labels: ["dependencies", "forensics"]
+
+  # ---- GitHub Actions ----------------------------------------------------
+  # Pins like actions/checkout@v3 and setup-python@v4 (audit-1 Gap #6
+  # found both stale) get version-bump PRs.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    labels: ["dependencies", "ci"]
+
+  # ---- Docker image base tags --------------------------------------------
+  # Each Dockerfile gets watched for base-image updates (e.g. python:3.11
+  # -> python:3.12, nginx:1.27 -> nginx:1.28).
+  - package-ecosystem: docker
+    directory: /forensics/scoreboard
+    schedule: {interval: monthly}
+    commit-message:
+      prefix: "chore(deps/forensics-docker)"
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: docker
+    directory: /blue-team
+    schedule: {interval: monthly}
+    commit-message:
+      prefix: "chore(deps/blue-team-docker)"
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: docker
+    directory: /red-team
+    schedule: {interval: monthly}
+    commit-message:
+      prefix: "chore(deps/red-team-docker)"
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: docker
+    directory: /pki-lab/tls_hardening
+    schedule: {interval: monthly}
+    commit-message:
+      prefix: "chore(deps/pki-docker)"
+    labels: ["dependencies", "docker"]
