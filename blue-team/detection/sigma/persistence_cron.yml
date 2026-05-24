@@ -13,9 +13,14 @@ logsource:
     product: linux
     service: syslog
 detection:
+    # Audit-2 Gap #7: dropped `crontab -l` (read-only enumeration) from
+    # cron_edit — it was firing on every cron_backdoor cleanup pass and
+    # confusing students about whether the IR action succeeded. Read-only
+    # `crontab -l` is now in a separate low-severity recon selection.
     cron_edit:
         - 'crontab -e'
-        - 'crontab -l'
+        - 'crontab -r'
+        - 'crontab -u'
         - '/etc/cron.'
         - '/var/spool/cron'
     suspicious_content:
@@ -30,6 +35,7 @@ detection:
 falsepositives:
     - Legitimate scheduled task management
     - System maintenance scripts
+    - IR cleanup workflows that read and rewrite crontabs
 level: high
 fields:
     - CommandLine
