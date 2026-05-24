@@ -1,0 +1,49 @@
+# .pre-commit-config.yaml -- Phase C2
+#
+# Install with:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run on all files (CI-style):
+#   pre-commit run --all-files
+#
+# Hooks mirror the CI workflow so a clean local run guarantees a clean
+# CI run (subject to OS differences).
+
+repos:
+
+  # ---- Basic hygiene -----------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        # Sigma rules and docker-compose are YAML -- catch syntax errors
+        # before they hit CI.
+        files: \.(yaml|yml)$
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ---- Python lint (mirrors CI Ruff step) --------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        # Format-only; configured via pyproject.toml [tool.ruff]. Runs
+        # second so the imports ruff just sorted stay sorted.
+
+  # ---- Shell scripts (mirrors CI ShellCheck step) -----------------------
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        # Match the CI severity so local + CI agree.
+        args: ["--severity=warning"]
+        files: \.sh$
