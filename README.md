@@ -240,8 +240,9 @@ cd adversary-in-a-box
 # 2. Copy environment config (sets COMPOSE_PROFILES=ir by default — see warning below)
 cp .env.example .env
 
-# 3. Build and start all services
-docker compose up -d
+# 3. Build and start all services via the wrapper (runs the OQ-1 air-gap
+#    preflight first — refuses to start if SAFE_MODE_DOMAINS resolve).
+scripts/lab/start.sh
 
 # 4. Verify all containers are healthy
 docker compose ps
