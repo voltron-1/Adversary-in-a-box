@@ -27,6 +27,7 @@ def hash_directory(directory: Path) -> dict:
     # Annotated as Any so the heterogeneous .append() / .len() ops on
     # manifest["files"] don't fight mypy's Sequence inference.
     from typing import Any
+
     manifest: dict[str, Any] = {
         "tool": "chain_of_custody.py",
         "version": "1.0",

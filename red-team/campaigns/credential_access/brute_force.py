@@ -50,7 +50,7 @@ class BruteForceCampaign(BaseCampaign):
         import requests
 
         self.log_step(
-            "init", f"Brute-forcing /login on {self.target} " f"({len(self.WORDLIST)} candidates)"
+            "init", f"Brute-forcing /login on {self.target} ({len(self.WORDLIST)} candidates)"
         )
 
         successes: list[dict] = []

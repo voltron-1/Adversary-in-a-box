@@ -65,11 +65,11 @@ def get_certificate_info(host: str, port: int) -> dict:
 
 def audit(host: str, port: int = 443):
     """Run complete TLS audit against a host."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("  TLS Cipher Audit — Adversary-in-a-Box Lab")
     print(f"  Target: {host}:{port}")
     print(f"  Time: {datetime.now(UTC).isoformat()}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # Get connection info
     cert_info = get_certificate_info(host, port)
