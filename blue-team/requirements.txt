@@ -12,4 +12,4 @@ python-dateutil==2.9.0
 # PyPI (verified via `pip index versions`) — CI installs failed. 1.1.6 is
 # the closest published version in the same minor line.
 sigma-cli==1.0.4
-pySigma-backend-elasticsearch==1.1.6
+pySigma-backend-elasticsearch==2.0.3
