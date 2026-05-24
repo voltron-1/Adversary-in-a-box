@@ -74,6 +74,15 @@ CAMPAIGNS = {
         "description": "On-path attack simulation -- duplicate MAC/IP binding",
         "domain": 1,
     },
+    # Phase B1b: brute force (T1110). 10-entry hard-coded wordlist
+    # against victim-web /login, rate-limited.
+    "brute-force": {
+        "module": "campaigns.credential_access.brute_force",
+        "class": "BruteForceCampaign",
+        "techniques": ["T1110"],
+        "description": "Credential brute force against victim-web /login",
+        "domain": 2,
+    },
     "lateral": {
         "module": "campaigns.lateral_movement.pass_the_hash",
         "class": "PassTheHashCampaign",

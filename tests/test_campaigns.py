@@ -140,6 +140,47 @@ class TestDnsTunnelCampaign(unittest.TestCase):
         self.assertTrue(result["success"])
 
 
+class TestBruteForceCampaign(unittest.TestCase):
+    """Phase B1b: T1110 credential brute force."""
+
+    def test_brute_force_technique_id(self):
+        from campaigns.credential_access.brute_force import BruteForceCampaign
+        c = BruteForceCampaign(target="http://victim-web",
+                               logger=MagicMock(), tagger=MagicMock())
+        self.assertEqual(c.TECHNIQUE_ID, "T1110")
+        self.assertEqual(c.TACTIC, "Credential Access")
+
+    def test_brute_force_wordlist_includes_known_good_creds(self):
+        # Sanity: the wordlist should hit at least one of the seeded
+        # victim-web users (admin/password123, victim/letmein, test/test).
+        from campaigns.credential_access.brute_force import BruteForceCampaign
+        wordlist = set(BruteForceCampaign.WORDLIST)
+        self.assertTrue(
+            ("admin", "password123") in wordlist
+            or ("victim", "letmein") in wordlist
+            or ("test", "test") in wordlist,
+            "wordlist must include at least one known-good seeded cred"
+        )
+
+    def test_brute_force_run_with_mocked_requests(self):
+        # Patch requests.post so the test doesn't hit any real network.
+        from campaigns.credential_access.brute_force import BruteForceCampaign
+        c = BruteForceCampaign(target="http://victim-web",
+                               logger=MagicMock(), tagger=MagicMock())
+        c.RATE_LIMIT_SECONDS = 0  # no sleeps during tests
+        fake_response = MagicMock(status_code=302, text="redirect")
+        with patch("requests.post", return_value=fake_response) as posted:
+            result = c.run()
+        self.assertTrue(result["success"])
+        self.assertEqual(posted.call_count, len(BruteForceCampaign.WORDLIST))
+
+    def test_brute_force_registered_in_runner(self):
+        os.environ.setdefault("LOG_DIR", tempfile.gettempdir())
+        import runner
+        self.assertIn("brute-force", runner.CAMPAIGNS)
+        self.assertEqual(runner.TECHNIQUE_MAP.get("T1110"), "brute-force")
+
+
 class TestMitmCampaign(unittest.TestCase):
     """Phase B1a: T1557 on-path attack simulation."""
 
