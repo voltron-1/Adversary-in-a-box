@@ -16,6 +16,16 @@ Ensure the following tools are installed before proceeding:
 | Git | 2.x | https://git-scm.com/ |
 | RAM | 8 GB minimum | ELK stack requirement |
 
+> **Platform support — Linux only for full functionality.** The Suricata IDS
+> sensor uses `network_mode: host` and binds `/var/log/suricata` from the
+> host filesystem. Logstash also reads `/var/log/suricata` and `/var/log/zeek`
+> from the host. On **Docker Desktop (macOS, Windows, WSL2 backend)** the
+> "host" network is the Docker VM, not your laptop — Suricata will only see
+> VM traffic, and the host log paths don't exist. The rest of the lab
+> (red-team, victims, ELK, scoreboard, IR playbooks) still works fully on
+> Docker Desktop; only the live IDS feed is degraded. Run on a Linux host
+> or VM if you need Suricata to fire on container traffic.
+
 ---
 
 ## Step 1 — Clone the Repository
