@@ -25,7 +25,11 @@
 1. Open Kibana → **Security** → **Rules** → Create New Rule
 2. Create a threshold rule: ≥5 failed SSH logins from the same source IP in 60 seconds
 3. Create an EQL rule detecting process injection: `process where process.name == "python" and parent.name == "bash"`
-4. Trigger the rule by running: `docker compose exec red-team python runner.py --technique T1110`
+4. Trigger the threshold rule by hammering SSH manually (no campaign for
+   T1110 exists yet): `for i in 1 2 3 4 5 6; do docker compose exec red-team \
+   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=2 root@victim-web 2>&1 || true; done`.
+   Trigger the EQL rule with the lateral-movement campaign (which spawns
+   python under bash): `docker compose exec red-team python runner.py --campaign lateral`.
 5. Verify the rule fires and creates a case
 
 **Security+ Connection:** Objective 2.5 — SIEM, log analysis, correlation rules

@@ -38,13 +38,20 @@
 
 ## Exercise 1.2 — MITM Interception (T1557)
 
-**Objective:** Observe ARP poisoning attack in Zeek connection logs.
+**Objective:** Recognize what an on-path attack looks like in Zeek connection
+logs.
+
+> **Status:** No MITM campaign is implemented yet — `--campaign mitm` is not
+> in the runner registry. Until it lands, run the discussion exercise:
 
 **Steps:**
-1. Run: `docker compose exec red-team python runner.py --campaign mitm`
-2. Open Kibana → Index: `zeek-*` → Filter: `event.type: conn`
-3. Identify anomalous MAC/IP associations indicating ARP spoofing
-4. Correlate with Suricata alert: `ET ARP Poisoning Detected`
+1. Review the Zeek lateral-movement script at
+   `blue-team/detection/zeek/scripts/lateral_movement.zeek` — note the
+   `internal_net` heuristic for detecting attacker-pivot connections.
+2. Open Kibana → Index: `zeek-*` → Filter: `event.type: conn` and explain
+   which MAC/IP fields would expose ARP spoofing if it were captured.
+3. Discuss why on-path detection in a containerized lab is fundamentally
+   limited (containers share an L2 bridge, ARP is suppressed by Docker).
 
 **Security+ Connection:** Objective 1.2 — On-path attacks, replay attacks
 
@@ -68,11 +75,18 @@
 
 **Objective:** Analyze a benign dropper payload in a sandboxed environment.
 
+The `phishing` campaign drops an EICAR-bearing attachment (the canonical
+benign AV test marker — see ADR 0001 / OQ-1), and the `persistence`
+campaign plants a cron beacon that the IR engine can roll back via
+`cleanup_persistence`. Together they cover the dropper → persistence chain.
+
 **Steps:**
-1. Run: `docker compose exec red-team python runner.py --campaign malware-drop`
-2. Observe process creation events in Kibana: `event.category: process`
-3. Identify persistence mechanisms: registry keys, cron entries, startup scripts
-4. Classify the malware type based on behavior (dropper, RAT, keylogger)
+1. Run the dropper: `docker compose exec red-team python runner.py --campaign phishing`
+2. Run the persistence stage: `docker compose exec red-team python runner.py --campaign persistence`
+3. Observe process creation events in Kibana: `event.category: process`
+4. Identify persistence mechanisms: cron entries (T1053.003), planted SSH
+   keys (T1098.004) — both written by the `persistence` campaign.
+5. Classify the malware type based on behavior (dropper, RAT, keylogger).
 
 **Security+ Connection:** Objective 1.4 — Malware types, indicators of compromise
 
