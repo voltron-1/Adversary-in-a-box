@@ -4,7 +4,7 @@ requests==2.34.2
 # pyyaml>=6.0.2, conflict broke CI dependency install (run 26348906189).
 pyyaml==6.0.3
 elasticsearch==8.13.0
-rich==13.7.1
+rich==15.0.0
 click==8.1.7
 python-dateutil==2.9.0
 # OQ-2 (ADR 0001): Sigma → EQL compile pipeline.
