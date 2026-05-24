@@ -11,6 +11,17 @@
 #   docker compose --env-file .env.jdoe up -d
 #
 # The generated file extends .env.example with student-specific overrides.
+#
+# Phase E4 caveat -- collision-free for SMALL classes only:
+#   The slot is sha256(id) % 128. With 13+ students the birthday
+#   paradox makes a collision likely. tests/test_student_env.py
+#   includes a `test_known_collision_pair` that pins iris+jack as the
+#   demonstrated colliding pair. If your class has more than ~10
+#   students or a colliding pair, the operator must either pick
+#   different IDs or hand-allocate the subnets/ports in the generated
+#   .env. A stateful allocator with persisted slot reservations would
+#   remove this limitation (tracked under Phase E in the implementation
+#   plan if you want to upgrade it).
 
 set -euo pipefail
 
