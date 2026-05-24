@@ -236,6 +236,15 @@ services:
     # down a shared lab host. Heap is 1G; container ceiling is 2G to
     # leave room for ES off-heap (Lucene mmap, networking buffers).
     mem_limit: 2g
+    # Phase C7: ES advertises ready via the cluster health endpoint;
+    # 'yellow' is sufficient for a single-node lab (green requires
+    # replicas which don't exist on single-node).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
     ulimits:
       memlock:
         soft: -1
@@ -279,8 +288,17 @@ services:
     # Phase C6: Kibana node process. 1G ceiling is comfortable for the
     # lab's small index volume.
     mem_limit: 1g
+    # Phase C7: Kibana exposes /api/status that returns 200 only after
+    # the app + plugins finish initializing.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -298,6 +316,13 @@ services:
     volumes:
       - ./evidence:/evidence
       - ./forensics:/app/forensics
+    # Phase C7: Flask returns 200 on / once the Scorer can talk to ES.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5002/api/scores || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     environment:
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://elasticsearch:9200}
       - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}

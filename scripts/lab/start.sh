@@ -30,4 +30,77 @@ else
 fi
 
 echo "[start] preflight clean; bringing the lab up..."
-exec docker compose up -d --build "$@"
+docker compose up -d --build "$@"
+
+# Phase C7: poll docker compose ps until every healthcheck'd service
+# reports healthy, OR exit early if any container exits.
+echo "[start] waiting for services to report healthy..."
+DEADLINE=$(( $(date +%s) + 180 ))   # 3-minute ceiling
+
+while :; do
+    # JSON output gives us per-service Health/State without depending on
+    # the human-readable format. Older compose versions print one JSON
+    # object per line; newer print a single array. Handle both.
+    STATUS_JSON="$(docker compose ps --format json 2>/dev/null || true)"
+    if [[ -z "$STATUS_JSON" ]]; then
+        echo "[start] docker compose ps returned no data; aborting"
+        exit 1
+    fi
+
+    # Normalize to one object per line.
+    LINES="$(printf '%s\n' "$STATUS_JSON" | python3 -c '
+import json, sys
+data = sys.stdin.read().strip()
+if not data:
+    sys.exit(0)
+try:
+    items = json.loads(data)
+    if isinstance(items, dict):
+        items = [items]
+except json.JSONDecodeError:
+    items = [json.loads(l) for l in data.splitlines() if l.strip()]
+for it in items:
+    print(f"{it.get(\"Service\",\"?\")}\t{it.get(\"State\",\"?\")}\t{it.get(\"Health\",\"\")}")')"
+
+    PENDING=0
+    FAILED=0
+    while IFS=$'\t' read -r service state health; do
+        case "$state" in
+            running)
+                # Only services with a healthcheck report Health; the
+                # rest are considered healthy when running.
+                case "$health" in
+                    healthy|"") : ;;
+                    starting)   PENDING=$((PENDING+1)) ;;
+                    *)          FAILED=$((FAILED+1)); echo "  [unhealthy] ${service} (Health=${health})" >&2 ;;
+                esac
+                ;;
+            exited|dead)
+                FAILED=$((FAILED+1))
+                echo "  [exited]    ${service}" >&2
+                ;;
+            *)
+                PENDING=$((PENDING+1))
+                ;;
+        esac
+    done <<< "$LINES"
+
+    if (( FAILED > 0 )); then
+        echo "[start] ${FAILED} service(s) failed; check 'docker compose logs'." >&2
+        exit 1
+    fi
+
+    if (( PENDING == 0 )); then
+        echo "[start] all services healthy."
+        docker compose ps
+        exit 0
+    fi
+
+    if (( $(date +%s) > DEADLINE )); then
+        echo "[start] timeout waiting for ${PENDING} service(s) to become healthy" >&2
+        docker compose ps >&2
+        exit 1
+    fi
+
+    sleep 3
+done
