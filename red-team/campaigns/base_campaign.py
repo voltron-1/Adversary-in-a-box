@@ -8,6 +8,8 @@ import abc
 import os
 import time
 import json
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -21,6 +23,12 @@ class BaseCampaign(abc.ABC):
     - Define a TACTIC (e.g., "Initial Access")
     - Implement the run() method
     - Call self.log_step() for each significant action
+
+    Campaigns that write to disk (cron entries, SSH keys, planted files) MUST
+    register paths via self.register_cleanup_path() OR override cleanup() so
+    `runner.py --cleanup-all` and the IR playbook engine can roll back any
+    persistent state. OQ-1 (ADR 0001) requires every disk-touching technique
+    to be self-cleaning.
     """
 
     TECHNIQUE_ID: str = "T0000"
@@ -34,6 +42,7 @@ class BaseCampaign(abc.ABC):
         self.start_time = datetime.now(timezone.utc)
         self.steps: list = []
         self.artifacts: list = []
+        self._cleanup_paths: list[str] = []
         self.success = False
 
     @abc.abstractmethod
@@ -93,3 +102,42 @@ class BaseCampaign(abc.ABC):
     def simulate_delay(self, seconds: float = 1.0):
         """Add realistic timing between attack steps."""
         time.sleep(seconds)
+
+    # ------------------------------------------------------------------ cleanup
+    def register_cleanup_path(self, path: str) -> None:
+        """Mark a file/dir as something `cleanup()` should remove."""
+        if path and path not in self._cleanup_paths:
+            self._cleanup_paths.append(path)
+
+    def cleanup(self) -> dict:
+        """
+        Remove any persistent state this campaign created. Default behavior:
+        delete every path registered via register_cleanup_path(). Subclasses
+        that touch resources other than the filesystem (crontab entries,
+        firewall rules, etc.) MUST override this method and either call
+        super().cleanup() at the end or replicate the path-removal loop.
+
+        Returns a dict suitable for logging:
+            {"technique": <id>, "removed": [...], "missing": [...], "errors": [...]}
+        """
+        removed: list[str] = []
+        missing: list[str] = []
+        errors: list[dict] = []
+        for path in self._cleanup_paths:
+            try:
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path)
+                    removed.append(path)
+                elif os.path.exists(path) or os.path.islink(path):
+                    os.remove(path)
+                    removed.append(path)
+                else:
+                    missing.append(path)
+            except OSError as exc:
+                errors.append({"path": path, "error": str(exc)})
+        return {
+            "technique": self.TECHNIQUE_ID,
+            "removed": removed,
+            "missing": missing,
+            "errors": errors,
+        }

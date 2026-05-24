@@ -18,6 +18,14 @@ class CronBackdoorCampaign(BaseCampaign):
     C2_IP = os.environ.get("ATTACKER_IP", "172.20.0.10")
     C2_PORT = os.environ.get("C2_PORT", "4444")
 
+    # OQ-1: paths this campaign writes to. Read by runner.py --cleanup-all
+    # so cleanup works without a preceding run() call.
+    WELL_KNOWN_ARTIFACTS = (
+        "/tmp/.lab_beacon.sh",
+        "/tmp/lab_beacon_simulated.sh",
+        "/tmp/lab_beacon.log",
+    )
+
     def run(self) -> dict:
         self.log_step("init", "Installing cron-based persistence backdoor")
         self.simulate_delay(1)
@@ -61,6 +69,9 @@ echo "[$(date)] LAB beacon ping to {self.C2_IP}:{self.C2_PORT}" >> /tmp/lab_beac
             os.chmod(path, 0o755)
         except Exception:
             path = "/tmp/lab_beacon_simulated.sh"
+        # OQ-1: register both the script and the log it produces for cleanup.
+        self.register_cleanup_path(path)
+        self.register_cleanup_path("/tmp/lab_beacon.log")
         return path
 
     def _install_cron(self, script_path: str) -> dict:
@@ -88,3 +99,31 @@ echo "[$(date)] LAB beacon ping to {self.C2_IP}:{self.C2_PORT}" >> /tmp/lab_beac
             return result.stdout.splitlines()
         except Exception:
             return ["(simulated) */5 * * * * /tmp/.lab_beacon.sh"]
+
+    def cleanup(self) -> dict:
+        """OQ-1: remove crontab entry plus the registered beacon script/log."""
+        result = super().cleanup()  # delete beacon script + log
+        cron_status = "skipped"
+        try:
+            current = subprocess.run(
+                ["crontab", "-l"], capture_output=True, text=True, timeout=5
+            )
+            if current.returncode == 0 and "lab_beacon" in current.stdout:
+                purged = "\n".join(
+                    line for line in current.stdout.splitlines()
+                    if "lab_beacon" not in line
+                )
+                if purged and not purged.endswith("\n"):
+                    purged += "\n"
+                subprocess.run(
+                    ["crontab", "-"], input=purged or "",
+                    capture_output=True, text=True, timeout=5,
+                )
+                cron_status = "removed"
+            elif current.returncode == 0:
+                cron_status = "absent"
+        except Exception as exc:
+            result["errors"].append({"path": "crontab", "error": str(exc)})
+            cron_status = "error"
+        result["crontab"] = cron_status
+        return result

@@ -197,14 +197,61 @@ def _run_full_killchain(target_override=None):
     console.print("\n[bold red]💀 Full kill chain complete.[/bold red]")
 
 
+def cleanup_all():
+    """
+    OQ-1 (ADR 0001): roll back any persistent state every campaign may have
+    left on disk (planted SSH keys, cron entries, beacon scripts, etc.).
+    Idempotent — safe to run more than once. Intended to be invoked from the
+    IR playbook engine OR by hand before `docker compose down`.
+    """
+    import importlib
+    print_banner()
+    console.print("[bold yellow]Running --cleanup-all over every disk-touching campaign...[/bold yellow]\n")
+    for name, cfg in CAMPAIGNS.items():
+        if not cfg.get("module"):
+            continue
+        try:
+            module = importlib.import_module(cfg["module"])
+            klass = getattr(module, cfg["class"])
+            # cleanup() is safe to call on a freshly-constructed instance —
+            # it operates on well-known paths (beacon scripts, authorized_keys
+            # files) rather than instance state from a prior run().
+            target = os.environ.get("TARGET_WEB", "http://victim-web")
+            inst = klass(target=target, logger=logger, tagger=tagger)
+            # Pre-register the well-known paths that each disk-touching
+            # campaign uses, so cleanup works without a preceding run().
+            for path in getattr(klass, "WELL_KNOWN_ARTIFACTS", ()):
+                inst.register_cleanup_path(path)
+            result = inst.cleanup()
+            removed = len(result.get("removed", []))
+            errors  = len(result.get("errors", []))
+            color = "green" if errors == 0 else "yellow"
+            console.print(
+                f"  [{color}]{name:<16}[/{color}] "
+                f"technique={result.get('technique', '?'):<10} "
+                f"removed={removed} errors={errors}"
+            )
+            if errors:
+                for e in result["errors"]:
+                    console.print(f"      [red]! {e}[/red]")
+        except Exception as exc:
+            console.print(f"  [red]{name:<16} cleanup failed: {exc}[/red]")
+    console.print("\n[bold green]Cleanup complete.[/bold green]")
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--list", "show_list", is_flag=True, help="List available campaigns and exit.")
 @click.option("--campaign", "-c", default=None, help="Campaign name to run (e.g. phishing, recon).")
 @click.option("--technique", "-t", default=None, help="MITRE ATT&CK technique ID (e.g., T1566.001).")
 @click.option("--target", default=None, help="Override target IP/hostname.")
 @click.option("--dry-run", is_flag=True, help="Simulate campaign without executing actions.")
-def main(show_list, campaign, technique, target, dry_run):
+@click.option("--cleanup-all", "do_cleanup", is_flag=True,
+              help="OQ-1: roll back persistent state left by any campaign and exit.")
+def main(show_list, campaign, technique, target, dry_run, do_cleanup):
     """Adversary-in-a-Box red team campaign launcher."""
+    if do_cleanup:
+        cleanup_all()
+        return
     if show_list:
         list_campaigns()
         return

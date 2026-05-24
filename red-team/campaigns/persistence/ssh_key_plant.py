@@ -21,6 +21,14 @@ class SshKeyPlantCampaign(BaseCampaign):
         "+adversary-in-a-box-lab-educational-use-only== lab-attacker@adversary-in-a-box"
     )
 
+    # OQ-1: authorized_keys files this campaign may have appended to. Used by
+    # runner.py --cleanup-all to scrub LAB_PUBLIC_KEY without a prior run().
+    WELL_KNOWN_ARTIFACTS = (
+        "/root/.ssh/authorized_keys",
+        "/home/victim/.ssh/authorized_keys",
+        "/var/www/.ssh/authorized_keys",
+    )
+
     def run(self) -> dict:
         self.log_step("init", "Planting SSH authorized key for persistence")
         self.simulate_delay(1)
@@ -59,6 +67,8 @@ class SshKeyPlantCampaign(BaseCampaign):
                 os.makedirs(os.path.dirname(auth_keys), exist_ok=True)
                 with open(auth_keys, "a") as f:
                     f.write(f"\n{self.LAB_PUBLIC_KEY}\n")
+                # OQ-1: remember the file we touched so cleanup can scrub it.
+                self.register_cleanup_path(auth_keys)
                 return {"status": "planted", "path": auth_keys}
             except PermissionError:
                 pass
@@ -68,4 +78,37 @@ class SshKeyPlantCampaign(BaseCampaign):
             "status": "simulated",
             "note": "Insufficient permissions to write authorized_keys in this context",
             "command": f"echo '{self.LAB_PUBLIC_KEY}' >> ~/.ssh/authorized_keys",
+        }
+
+    def cleanup(self) -> dict:
+        """
+        OQ-1: scrub only the planted LAB_PUBLIC_KEY line from authorized_keys
+        files we wrote to — never delete the whole file (would lock the user
+        out). Other campaigns' default cleanup() removes registered paths
+        outright; this one rewrites them in place.
+        """
+        removed: list[str] = []
+        missing: list[str] = []
+        errors: list[dict] = []
+        for path in self._cleanup_paths:
+            try:
+                if not os.path.exists(path):
+                    missing.append(path)
+                    continue
+                with open(path) as f:
+                    lines = f.readlines()
+                kept = [ln for ln in lines if self.LAB_PUBLIC_KEY not in ln]
+                if len(kept) != len(lines):
+                    with open(path, "w") as f:
+                        f.writelines(kept)
+                    removed.append(path)
+                else:
+                    missing.append(path)
+            except OSError as exc:
+                errors.append({"path": path, "error": str(exc)})
+        return {
+            "technique": self.TECHNIQUE_ID,
+            "removed": removed,
+            "missing": missing,
+            "errors": errors,
         }
