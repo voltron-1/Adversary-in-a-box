@@ -67,10 +67,22 @@ services:
 
   # ---------------------------------------------------------------------------
   # BLUE TEAM DASHBOARD — Flask alert & playbook UI
+  #
+  # SECURITY: gated behind the "ir" profile because this container is granted
+  # /var/run/docker.sock (= root on the host) and NET_ADMIN so the IR scripts
+  # (isolate_host.sh, block_ip.sh) can quarantine victims and edit iptables.
+  # A flask RCE here would be a single-step host takeover.
+  #
+  # .env.example sets COMPOSE_PROFILES=ir by default so `docker compose up`
+  # still works for normal lab use. A security-conscious operator can run
+  # `COMPOSE_PROFILES= docker compose up` to start the lab WITHOUT the
+  # blue-team container — the dashboard won't be available, but the rest of
+  # the stack (red-team, victims, SIEM, scoreboard) functions normally.
   # ---------------------------------------------------------------------------
   blue-team:
     build: ./blue-team
     hostname: defender
+    profiles: ["ir"]
     ports:
       - "${BLUE_TEAM_PORT:-5000}:5000"
     networks:

@@ -237,7 +237,7 @@ adversary-in-a-box/
 git clone https://github.com/your-handle/adversary-in-a-box.git
 cd adversary-in-a-box
 
-# 2. Copy environment config
+# 2. Copy environment config (sets COMPOSE_PROFILES=ir by default — see warning below)
 cp .env.example .env
 
 # 3. Build and start all services
@@ -252,6 +252,19 @@ open http://localhost:5000
 # 6. Open Kibana SIEM
 open http://localhost:5601
 ```
+
+> **Security note — the `ir` profile.** The `blue-team` container is gated
+> behind `profiles: ["ir"]` in `docker-compose.yml` because it is granted
+> `/var/run/docker.sock` (effectively root on the host) plus `NET_ADMIN` so
+> the IR scripts (`isolate_host.sh`, `block_ip.sh`) can quarantine victims
+> and edit iptables. A web RCE in the Flask dashboard would be a single-step
+> container escape. **Run the lab on a disposable VM, never your daily
+> driver.** If you want to start the stack WITHOUT the blue-team container
+> (no IR, no host-root risk):
+>
+> ```bash
+> COMPOSE_PROFILES= docker compose up -d
+> ```
 
 ---
 
