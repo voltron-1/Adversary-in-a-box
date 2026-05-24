@@ -5,6 +5,9 @@ elasticsearch==8.13.0
 rich==13.7.1
 click==8.1.7
 python-dateutil==2.9.0
-# OQ-2 (ADR 0001): Sigma → EQL compile pipeline
+# OQ-2 (ADR 0001): Sigma → EQL compile pipeline.
+# Audit-2 Gap #8: pySigma-backend-elasticsearch 1.1.7 was never published to
+# PyPI (verified via `pip index versions`) — CI installs failed. 1.1.6 is
+# the closest published version in the same minor line.
 sigma-cli==1.0.4
-pySigma-backend-elasticsearch==1.1.7
+pySigma-backend-elasticsearch==1.1.6

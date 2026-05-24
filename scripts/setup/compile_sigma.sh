@@ -20,7 +20,13 @@ SOURCE_DIR="${SOURCE_DIR:-$ROOT_DIR/blue-team/detection/sigma}"
 COMPILED_DIR="${COMPILED_DIR:-$SOURCE_DIR/compiled}"
 KIBANA_URL="${KIBANA_URL:-http://localhost:5601}"
 TARGET="${TARGET:-eql}"
-PIPELINE="${PIPELINE:-elk-common}"
+# Audit-2 Gap #8: the old default `elk-common` is not a real pipeline name
+# in pySigma-backend-elasticsearch — `sigma list pipelines` shows only
+# ecs_windows{,_old}, ecs_zeek_beats, ecs_zeek_corelight, ecs_kubernetes.
+# These rules use keyword-only selections (no field mappings), so no
+# pipeline transformation is needed. Set PIPELINE=ecs_zeek_beats (or any
+# other valid name) if you add field-based rules later.
+PIPELINE="${PIPELINE:-}"
 
 command -v sigma >/dev/null 2>&1 || { echo "[ERROR] sigma-cli not installed. pip install sigma-cli pySigma-backend-elasticsearch" >&2; exit 1; }
 
@@ -37,13 +43,22 @@ if (( ${#rules[@]} == 0 )); then
     exit 0
 fi
 
+PIPELINE_FLAG=()
+if [[ -n "$PIPELINE" ]]; then
+    PIPELINE_FLAG=(-p "$PIPELINE")
+else
+    # EQL backend insists on either a pipeline or --without-pipeline; the
+    # current rules don't need field mappings (keyword-only selections).
+    PIPELINE_FLAG=(--without-pipeline)
+fi
+
 for rule in "${rules[@]}"; do
     name="$(basename "$rule" .yml)"
     out="$COMPILED_DIR/${name}.eql.json"
     echo "  compiling $name -> $(basename "$out")"
     sigma convert \
         -t "$TARGET" \
-        -p "$PIPELINE" \
+        "${PIPELINE_FLAG[@]}" \
         -f siem_rule \
         "$rule" \
         > "$out"
