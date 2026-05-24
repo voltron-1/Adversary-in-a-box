@@ -38,7 +38,9 @@ ignore = [
 
 [tool.mypy]
 # Phase C3: strict only on the two modules that own load-bearing types.
-# Rest of the lab uses runtime duck-typing and isn't worth the audit.
+# Phase F4: a separate non-strict CI step (see validate.yml) widens the
+# coverage to all of red-team/ + forensics/ + blue-team/. Both runs are
+# invoked separately. The strict scope here intentionally stays narrow.
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true

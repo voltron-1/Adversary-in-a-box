@@ -102,7 +102,7 @@ def award_points():
     return jsonify({"awarded": points, "total": MANUAL_SCORES[team]["total"]})
 
 
-def _compute_scores() -> dict:
+def _compute_scores() -> dict:  # type: ignore[no-any-unimported]
     """
     Compute current scores via the MTTD/MTTA Scorer (OQ-5) and layer
     MANUAL_OVERRIDE_RULES adjustments from /api/award on top.
@@ -132,7 +132,7 @@ def _compute_scores() -> dict:
     else:
         scores["winner"] = "tie"
     scores["last_updated"] = datetime.now(UTC).isoformat()
-    return scores
+    return scores  # type: ignore[no-any-return]
 
 
 if __name__ == "__main__":

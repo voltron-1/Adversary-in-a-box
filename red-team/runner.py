@@ -24,7 +24,7 @@ from utils.logger import AttackLogger
 from utils.mitre_tagger import MitreTagger
 
 # Campaign registry — maps names to module paths
-CAMPAIGNS = {
+CAMPAIGNS: dict[str, dict] = {
     "phishing": {
         "module": "campaigns.phishing.spear_phish",
         "class": "SpearPhishCampaign",

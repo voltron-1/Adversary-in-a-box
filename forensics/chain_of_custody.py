@@ -24,7 +24,10 @@ def sha256_file(path: Path) -> str:
 
 def hash_directory(directory: Path) -> dict:
     """Hash all files in a directory and return a custody manifest."""
-    manifest = {
+    # Annotated as Any so the heterogeneous .append() / .len() ops on
+    # manifest["files"] don't fight mypy's Sequence inference.
+    from typing import Any
+    manifest: dict[str, Any] = {
         "tool": "chain_of_custody.py",
         "version": "1.0",
         "algorithm": "SHA-256",

@@ -45,6 +45,14 @@ jobs:
       # the --strict treatment; the rest of the lab is runtime duck-typed.
       run: mypy --strict --no-incremental red-team/campaigns/base_campaign.py forensics/scoreboard/scorer.py
 
+    - name: Mypy non-strict across the codebase
+      # Phase F4: catch obvious type errors across all 3 subprojects
+      # without forcing strict annotations everywhere.
+      # --explicit-package-bases handles the dasherized dirs;
+      # --ignore-missing-imports skips type stubs for yaml/requests/etc.
+      # The --strict scope above stays narrow.
+      run: mypy --no-incremental --explicit-package-bases --ignore-missing-imports red-team/ forensics/ blue-team/
+
     - name: Pre-commit run (all files)
       # Phase F6: mirror the .pre-commit-config.yaml hooks in CI so local +
       # CI agree. Already-passing ruff step above provides early-exit on

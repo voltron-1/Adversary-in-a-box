@@ -23,7 +23,7 @@ class PlaybookEngine:
     def __init__(self, playbook_name: str):
         self.playbook_name = playbook_name
         self.playbook = self._load_playbook(playbook_name)
-        self.execution_log = []
+        self.execution_log: list[dict] = []
         self.start_time = datetime.now(UTC)
 
     def _load_playbook(self, name: str) -> dict:
@@ -31,9 +31,10 @@ class PlaybookEngine:
         if not path.exists():
             raise FileNotFoundError(f"Playbook not found: {path}")
         with open(path) as f:
-            return yaml.safe_load(f)
+            data: dict = yaml.safe_load(f)
+            return data
 
-    def execute(self, context: dict = None) -> dict:
+    def execute(self, context: dict | None = None) -> dict:
         """Execute all steps in the playbook."""
         context = context or {}
         results = []
