@@ -242,3 +242,4 @@ evidence/*
 !evidence/README.md
 reports/*
 !reports/.gitkeep
+.coverage

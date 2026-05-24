@@ -86,17 +86,25 @@ jobs:
         scandir: ./scripts
         severity: warning
 
-    - name: Run all tests
+    - name: Run all tests with coverage
       # Discover every test_*.py under tests/ — covers test_campaigns,
       # test_playbooks, test_pki, and test_scorer (Gap #6 audit fix).
       # EVIDENCE_DIR overridden so save_artifact() in BaseCampaign has a
       # writable location on the bare runner (the default /evidence is only
       # writable from inside the lab containers).
+      # Phase F8: coverage runs on the 3.11 matrix row only; floor set in
+      # pyproject.toml [tool.coverage.report] fail_under.
       env:
         EVIDENCE_DIR: ${{ runner.temp }}/evidence
       run: |
         mkdir -p "$EVIDENCE_DIR"
-        python -m unittest discover -s tests -v
+        if [ "${{ matrix.python-version }}" = "3.11" ]; then
+          pip install coverage
+          coverage run -m unittest discover -s tests -v
+          coverage report
+        else
+          python -m unittest discover -s tests -v
+        fi
 
     - name: Smoke-test Sigma compile pipeline
       # Compile every .yml in blue-team/detection/sigma/ to EQL JSON. Catches

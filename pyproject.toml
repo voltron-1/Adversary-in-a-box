@@ -52,3 +52,28 @@ files = [
 # packages live under dasherized directories ("red-team", "blue-team") that
 # aren't valid Python module names. The strictness is applied uniformly via
 # the top-level [tool.mypy] block plus the `--strict` CLI flag in CI.
+
+[tool.coverage.run]
+# Phase F8: measure only the lab source trees, not tests / docs / generated.
+# Dasherized dir names are fine -- coverage operates on filesystem paths.
+source = ["red-team", "blue-team", "forensics", "pki-lab"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/compiled/*",
+    "*/.git/*",
+]
+
+[tool.coverage.report]
+# Phase F8: 60% baseline. Raise as coverage grows; see
+# docs/IMPLEMENTATION_PLAN.md Phase F notes.
+fail_under = 60
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
