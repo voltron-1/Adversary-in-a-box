@@ -226,7 +226,7 @@ adversary-in-a-box/
 | Docker Compose | 2.x | Service orchestration |
 | Python | 3.11+ | Red/blue team scripts |
 | Git | 2.x | Repository management |
-| 8 GB RAM | — | ELK stack requirement |
+| 8 GB RAM strict, 12 GB recommended | — | ELK stack (per Phase C6: ES 2G + Kibana 1G + Logstash 1G hard caps; rest ~2G) |
 
 ---
 

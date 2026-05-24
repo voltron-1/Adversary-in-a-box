@@ -232,6 +232,10 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    # Phase C6: cap memory so a single OOMing student stack can't take
+    # down a shared lab host. Heap is 1G; container ceiling is 2G to
+    # leave room for ES off-heap (Lucene mmap, networking buffers).
+    mem_limit: 2g
     ulimits:
       memlock:
         soft: -1
@@ -255,6 +259,8 @@ services:
       - zeek-logs:/zeek-logs:ro
     environment:
       - LS_JAVA_OPTS=-Xms512m -Xmx512m
+    # Phase C6: heap 512m; cap container at 1G for pipeline buffers.
+    mem_limit: 1g
     depends_on:
       - elasticsearch
     restart: unless-stopped
@@ -270,6 +276,9 @@ services:
     volumes:
       - ./siem/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
       - kibana-data:/usr/share/kibana/data
+    # Phase C6: Kibana node process. 1G ceiling is comfortable for the
+    # lab's small index volume.
+    mem_limit: 1g
     depends_on:
       - elasticsearch
     restart: unless-stopped
