@@ -79,6 +79,17 @@ jobs:
     - name: Validate Docker Compose (--profile pki)
       run: docker compose --profile pki config --quiet
 
+    - name: Docker build smoke test
+      # Phase F5: build the lab's own images so missing wheels for a new
+      # base image (e.g. python:3.14-slim wheel coverage gaps) fail CI
+      # before they hit a dev box. Catches the audit-2 Gap #8 +
+      # Phase A1 supply-chain class of regression. Only runs on one
+      # matrix row to keep the runner budget reasonable.
+      if: matrix.python-version == '3.11'
+      run: |
+        docker compose build --pull red-team blue-team scoreboard victim-web victim-db victim-mail zeek
+        docker compose --profile pki build --pull pki-nginx
+
     - name: bash -n syntax check on shell scripts
       # Phase F12: ShellCheck catches semantic issues; `bash -n` catches
       # raw parser errors (missing fi/done/etc) that ShellCheck doesn't
