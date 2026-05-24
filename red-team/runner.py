@@ -56,8 +56,18 @@ CAMPAIGNS = {
     "lateral": {
         "module": "campaigns.lateral_movement.pass_the_hash",
         "class": "PassTheHashCampaign",
-        "techniques": ["T1550.002", "T1563.001"],
-        "description": "Lateral movement via Pass-the-Hash + SSH hijacking",
+        "techniques": ["T1550.002"],
+        "description": "Lateral movement via Pass-the-Hash (NTLM relay simulation)",
+        "domain": 2,
+    },
+    # Audit-2 Gap #10: SshHijackCampaign existed in
+    # campaigns/lateral_movement/ssh_hijack.py but wasn't registered, so
+    # --technique T1563.001 silently fell back to PassTheHashCampaign.
+    "lateral-ssh": {
+        "module": "campaigns.lateral_movement.ssh_hijack",
+        "class": "SshHijackCampaign",
+        "techniques": ["T1563.001"],
+        "description": "Lateral movement via SSH agent socket hijacking",
         "domain": 2,
     },
     "exfil": {

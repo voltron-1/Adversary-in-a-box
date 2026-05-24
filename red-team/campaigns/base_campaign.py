@@ -74,7 +74,17 @@ class BaseCampaign(abc.ABC):
         return step
 
     def save_artifact(self, filename: str, content: str) -> str:
-        """Save an artifact to the evidence directory."""
+        """
+        Save an artifact to the evidence directory.
+
+        Audit-2 note: artifacts written here are CHAIN-OF-CUSTODY EVIDENCE,
+        not attacker persistence — they go to /evidence/ which the scoreboard
+        scans for manifest.sha256 bonuses and which students hash via
+        forensics/chain_of_custody.py. cleanup() must NOT delete these. If a
+        campaign also writes persistent attacker state (cron entries, planted
+        keys, beacon scripts), call register_cleanup_path() explicitly for
+        those paths only.
+        """
         evidence_dir = os.environ.get("EVIDENCE_DIR", "/evidence")
         os.makedirs(evidence_dir, exist_ok=True)
         path = os.path.join(evidence_dir, filename)
