@@ -46,29 +46,72 @@ Designed as a hands-on companion to the *CompTIA Security+ Guide to Network Secu
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    subgraph host["Lab host (disposable VM recommended)"]
+        subgraph labnet["lab-net (Docker bridge, internal:true -- no external egress)"]
+            red["red-team<br/>(Kali base)<br/>.10"]
+            vweb["victim-web<br/>OWASP Top 10<br/>.30"]
+            vdb["victim-db<br/>MySQL weak creds<br/>.31"]
+            vmail["victim-mail<br/>Postfix<br/>.32"]
+            es["elasticsearch<br/>:9200<br/>.50"]
+            ls["logstash<br/>.51"]
+            kib["kibana<br/>:5601<br/>.52"]
+            zeek["zeek<br/>NSM<br/>.53"]
+            score["scoreboard<br/>Flask :5002<br/>.60"]
+            blue["blue-team<br/>Flask :5000<br/>.20<br/><i>profiles: ir</i>"]
+        end
+
+        subgraph qnet["quarantine-net (internal:true)"]
+            qhost["isolated host<br/>(during IR)"]
+        end
+
+        suri["suricata<br/>network_mode: host<br/>(instructor-side)"]
+
+        subgraph pki["pki profile (opt-in)"]
+            pkin["pki-nginx :8443<br/>.70"]
+            pkic["pki-ca<br/>alpine/openssl<br/>.71"]
+        end
+    end
+
+    red -->|attacks| vweb
+    red -->|attacks| vdb
+    red -->|attacks| vmail
+    vweb -->|traffic| zeek
+    vweb -->|traffic| suri
+    zeek -->|JSON logs<br/>(zeek-logs vol)| ls
+    suri -->|eve.json<br/>(host bind)| ls
+    ls --> es
+    kib --> es
+    score --> es
+    blue -->|/api/scores| score
+    blue -.->|docker.sock<br/>quarantine target| qhost
+    pkin --> pkic
+
+    classDef vuln fill:#ffe5e5,stroke:#cc0000;
+    classDef siem fill:#e5f3ff,stroke:#0066cc;
+    classDef ir fill:#fff5d9,stroke:#cc9900;
+    classDef opt fill:#eee,stroke:#666,stroke-dasharray: 4 4;
+    class vweb,vdb,vmail vuln;
+    class es,ls,kib,zeek,suri,score siem;
+    class blue ir;
+    class pkin,pkic,qnet,qhost opt;
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Docker Network: lab-net                  │
-│                                                             │
-│  ┌──────────────┐    attacks     ┌──────────────────────┐  │
-│  │  Red Team    │ ─────────────► │   Target Environment │  │
-│  │  Container   │                │  (victim-web, db,    │  │
-│  │  (Kali base) │                │   mail server)       │  │
-│  └──────────────┘                └──────────┬───────────┘  │
-│                                             │ traffic       │
-│  ┌──────────────┐    alerts      ┌──────────▼───────────┐  │
-│  │  Blue Team   │ ◄────────────  │   Suricata IDS /     │  │
-│  │  Dashboard   │                │   Zeek NSM           │  │
-│  │  (Flask UI)  │                └──────────┬───────────┘  │
-│  └──────────────┘                           │ logs         │
-│                                  ┌──────────▼───────────┐  │
-│  ┌──────────────┐                │   ELK Stack (SIEM)   │  │
-│  │  Forensic    │ ◄──────────────│   Elasticsearch      │  │
-│  │  Scoreboard  │   enriched     │   Logstash           │  │
-│  └──────────────┘   events       │   Kibana             │  │
-│                                  └──────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
+
+### Profile / network gating
+
+| Component | Profile | Network | Notes |
+|---|---|---|---|
+| All victims, ELK, scoreboard, Suricata, Zeek, red-team | default | `lab-net` | Always start. |
+| `blue-team` (Flask + IR scripts) | `ir` | `lab-net` + `quarantine-net` | Gated -- has `/var/run/docker.sock` (audit-2 Gap #1). Default-enabled via `COMPOSE_PROFILES=ir` in `.env.example`. |
+| `pki-nginx`, `pki-ca` | `pki` | `lab-net` | Opt-in: `docker compose --profile pki up`. |
+| Quarantine target | (transient) | `quarantine-net` | A victim swapped here by `isolate_host.sh` during IR; restored by `restore_host.sh`. |
+
+### Per-student isolation
+
+`COMPOSE_PROJECT_NAME` + `LAB_NET_PREFIX` from `.env` prefix every
+container + network name so multiple students share one host without
+collisions. See `scripts/lab/student-env.sh` for the generator.
 
 ---
 
