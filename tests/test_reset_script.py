@@ -145,27 +145,33 @@ class TestResetScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             h = ResetScriptHarness(Path(tmp), red_team_running=True)
             result = h.run()
+            calls = h.calls()   # capture BEFORE tmpdir is cleaned up
+            debug = (
+                f"\n--- reset.sh stdout ---\n{result.stdout}\n"
+                f"--- reset.sh stderr ---\n{result.stderr}\n"
+                f"--- recorded calls ({len(calls)} lines) ---\n"
+                + "\n".join(calls) + "\n"
+            )
 
         self.assertEqual(result.returncode, 0,
-                         f"reset.sh failed: {result.stderr}")
-        calls = h.calls()
+                         f"reset.sh failed:{debug}")
 
         # Step 1: cleanup-all on red-team.
         cleanup_calls = [c for c in calls if "runner.py --cleanup-all" in c]
         self.assertEqual(len(cleanup_calls), 1,
-                         f"expected 1 cleanup-all call, got: {cleanup_calls}")
+                         f"expected 1 cleanup-all call, got: {cleanup_calls}{debug}")
 
         # Step 2: TWO compose down calls (pki profile first, then default).
         down_calls = [c for c in calls if "compose" in c and "down" in c and "-v" in c]
         self.assertGreaterEqual(len(down_calls), 2,
-                                f"expected >=2 compose down calls, got: {down_calls}")
+                                f"expected >=2 compose down calls, got: {down_calls}{debug}")
         self.assertTrue(any("--profile pki" in c for c in down_calls),
-                        "pki-profile down not called")
+                        f"pki-profile down not called{debug}")
 
         # Step 5: start.sh called.
         start_calls = [c for c in calls if c.startswith("start.sh")]
         self.assertEqual(len(start_calls), 1,
-                         f"expected 1 start.sh call, got: {start_calls}")
+                         f"expected 1 start.sh call, got: {start_calls}{debug}")
 
     def test_step3_wipes_evidence_keeps_gitkeep_and_readme(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
