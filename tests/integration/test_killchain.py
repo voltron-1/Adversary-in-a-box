@@ -47,6 +47,34 @@ def _docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
+# Phase F1: per-technique alert keywords. For each registered
+# technique, we look for at least one Suricata alert whose msg/signature
+# contains either the technique ID itself or a known campaign keyword
+# from the lab's local.rules (see tests/test_suricata_rules.py for the
+# same mapping).
+TECHNIQUE_KEYWORDS: dict[str, list[str]] = {
+    "T1557": ["T1557", "LAB-SIMULATION: attacker"],
+    "T1110": ["T1110", "HTTP Login Burst", "Multiple SSH Authentication Failures"],
+    "T1204": ["T1204", "EICAR-STANDARD-ANTIVIRUS-TEST-FILE"],
+    "T1486": ["T1486", "NO ACTUAL ENCRYPTION", "Ransom Note"],
+    "T1190": ["T1190", "SQL Injection", "XSS", "Path Traversal", "UNION SELECT", "WEB_SERVER"],
+    "T1566.001": ["T1566", "PHISHING", "Suspicious Email"],
+    "T1595": ["T1595", "SCAN", "Port Scan", "Nmap"],
+    "T1589": ["T1589", "SCAN", "Port Scan"],
+    "T1548.001": ["T1548", "sudo", "Privilege Escalation"],
+    "T1548.003": ["T1548", "sudo", "Privilege Escalation"],
+    "T1550.002": ["T1550", "Pass-the-Hash", "SMB"],
+    "T1563.001": ["T1563", "SSH"],
+    "T1048.003": ["T1048", "DNS_TUNNEL", "DNS Tunnel", "DNS Query Rate"],
+    "T1041": ["T1041", "HTTPS Beacon", "Suspicious HTTPS", "C2"],
+}
+
+# Same allowlist as tests/test_suricata_rules.py. Host-side-only
+# techniques fire on host events (Sigma rules), not on Suricata's
+# network-side detection, so we don't require Suricata coverage.
+HOST_ONLY_TECHNIQUES = {"T1098.004", "T1053.003"}
+
+
 def _es_query(query: dict) -> dict:
     """Hit the lab's ES :9200 from the host. Returns parsed JSON, or {} on error."""
     url = "http://localhost:9200/suricata-*/_search?size=0"
@@ -127,7 +155,7 @@ class TestFullKillchain(unittest.TestCase):
         self.assertEqual(
             proc.returncode,
             0,
-            f"full-killchain run failed:\n" f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+            f"full-killchain run failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
 
         # Give ELK 30 seconds to ingest the campaign-generated traffic.
@@ -142,6 +170,41 @@ class TestFullKillchain(unittest.TestCase):
             "Expected at least one Suricata alert after full-killchain run; "
             "got 0. Either the IDS didn't see the traffic (check Suricata "
             "logs) or the lab is misconfigured.",
+        )
+
+    def test_alerts_cover_each_registered_technique(self) -> None:
+        # Phase F1. Walk the runner's TECHNIQUE_MAP and assert each
+        # technique (minus the host-only ones) has at least one Suricata
+        # alert in ES whose msg/signature matches one of the keywords
+        # in TECHNIQUE_KEYWORDS. Catches the regression class where a
+        # campaign silently stops firing.
+        import sys
+
+        sys.path.insert(0, str(REPO_ROOT / "red-team"))
+        os.environ.setdefault("LOG_DIR", "/tmp/aib-logs")
+        import runner  # noqa: PLC0415
+
+        missing: list[str] = []
+        for technique in sorted(runner.TECHNIQUE_MAP.keys()):
+            if technique in HOST_ONLY_TECHNIQUES:
+                continue
+            keywords = TECHNIQUE_KEYWORDS.get(technique, [technique])
+
+            # Build a should-clause: match if alert.signature contains
+            # any of the keywords. ES's match_phrase is the cheap option
+            # since signature strings are short and we want substring-ish.
+            should = [{"match_phrase": {"alert.signature": kw}} for kw in keywords]
+            result = _es_query({"query": {"bool": {"should": should, "minimum_should_match": 1}}})
+            hits = result.get("hits", {}).get("total", {}).get("value", 0)
+            if hits == 0:
+                missing.append(f"{technique} (looked for {keywords})")
+
+        self.assertFalse(
+            missing,
+            "Some techniques produced zero Suricata alerts after the "
+            "kill chain. Either the campaign didn't fire, the SIEM "
+            "didn't ingest, or the Suricata rule keyword drifted from "
+            "TECHNIQUE_KEYWORDS:\n  - " + "\n  - ".join(missing),
         )
 
     def test_compose_services_all_running(self) -> None:
