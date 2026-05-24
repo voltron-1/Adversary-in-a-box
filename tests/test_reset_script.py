@@ -145,33 +145,35 @@ class TestResetScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             h = ResetScriptHarness(Path(tmp), red_team_running=True)
             result = h.run()
-            calls = h.calls()   # capture BEFORE tmpdir is cleaned up
+            calls = h.calls()  # capture BEFORE tmpdir is cleaned up
             debug = (
                 f"\n--- reset.sh stdout ---\n{result.stdout}\n"
                 f"--- reset.sh stderr ---\n{result.stderr}\n"
-                f"--- recorded calls ({len(calls)} lines) ---\n"
-                + "\n".join(calls) + "\n"
+                f"--- recorded calls ({len(calls)} lines) ---\n" + "\n".join(calls) + "\n"
             )
 
-        self.assertEqual(result.returncode, 0,
-                         f"reset.sh failed:{debug}")
+        self.assertEqual(result.returncode, 0, f"reset.sh failed:{debug}")
 
         # Step 1: cleanup-all on red-team.
         cleanup_calls = [c for c in calls if "runner.py --cleanup-all" in c]
-        self.assertEqual(len(cleanup_calls), 1,
-                         f"expected 1 cleanup-all call, got: {cleanup_calls}{debug}")
+        self.assertEqual(
+            len(cleanup_calls), 1, f"expected 1 cleanup-all call, got: {cleanup_calls}{debug}"
+        )
 
         # Step 2: TWO compose down calls (pki profile first, then default).
         down_calls = [c for c in calls if "compose" in c and "down" in c and "-v" in c]
-        self.assertGreaterEqual(len(down_calls), 2,
-                                f"expected >=2 compose down calls, got: {down_calls}{debug}")
-        self.assertTrue(any("--profile pki" in c for c in down_calls),
-                        f"pki-profile down not called{debug}")
+        self.assertGreaterEqual(
+            len(down_calls), 2, f"expected >=2 compose down calls, got: {down_calls}{debug}"
+        )
+        self.assertTrue(
+            any("--profile pki" in c for c in down_calls), f"pki-profile down not called{debug}"
+        )
 
         # Step 5: start.sh called.
         start_calls = [c for c in calls if c.startswith("start.sh")]
-        self.assertEqual(len(start_calls), 1,
-                         f"expected 1 start.sh call, got: {start_calls}{debug}")
+        self.assertEqual(
+            len(start_calls), 1, f"expected 1 start.sh call, got: {start_calls}{debug}"
+        )
 
     def test_step3_wipes_evidence_keeps_gitkeep_and_readme(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -200,11 +202,12 @@ class TestResetScript(unittest.TestCase):
             h = ResetScriptHarness(Path(tmp))
             result = h.run("--no-restart")
 
-        self.assertEqual(result.returncode, 0,
-                         f"reset.sh --no-restart failed: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"reset.sh --no-restart failed: {result.stderr}")
         calls = h.calls()
-        self.assertFalse([c for c in calls if c.startswith("start.sh")],
-                         "start.sh should NOT have been called with --no-restart")
+        self.assertFalse(
+            [c for c in calls if c.startswith("start.sh")],
+            "start.sh should NOT have been called with --no-restart",
+        )
 
     def test_skips_cleanup_when_red_team_not_running(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -213,19 +216,20 @@ class TestResetScript(unittest.TestCase):
             calls = h.calls()
             debug = (
                 f"\n--- rc:{result.returncode} ---\nstdout:\n{result.stdout}"
-                f"\nstderr:\n{result.stderr}\ncalls ({len(calls)}):\n"
-                + "\n".join(calls) + "\n"
+                f"\nstderr:\n{result.stderr}\ncalls ({len(calls)}):\n" + "\n".join(calls) + "\n"
             )
 
         self.assertEqual(result.returncode, 0, debug)
         # No cleanup-all call expected when red-team isn't in `compose ps`.
         self.assertFalse(
             [c for c in calls if "runner.py --cleanup-all" in c],
-            f"cleanup-all should NOT have been called when red-team is not running{debug}")
+            f"cleanup-all should NOT have been called when red-team is not running{debug}",
+        )
         # But compose down still runs.
         self.assertTrue(
             [c for c in calls if "compose" in c and "down" in c],
-            f"compose down should still run when red-team isn't running{debug}")
+            f"compose down should still run when red-team isn't running{debug}",
+        )
 
     def test_compose_forward_flags_pass_to_start_sh(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,15 +238,15 @@ class TestResetScript(unittest.TestCase):
             calls = h.calls()
             debug = (
                 f"\n--- rc:{result.returncode} ---\nstdout:\n{result.stdout}"
-                f"\nstderr:\n{result.stderr}\ncalls ({len(calls)}):\n"
-                + "\n".join(calls) + "\n"
+                f"\nstderr:\n{result.stderr}\ncalls ({len(calls)}):\n" + "\n".join(calls) + "\n"
             )
 
         self.assertEqual(result.returncode, 0, debug)
         start_calls = [c for c in calls if c.startswith("start.sh")]
         self.assertEqual(len(start_calls), 1, debug)
-        self.assertIn("--profile pki", start_calls[0],
-                      f"compose flags should forward to start.sh{debug}")
+        self.assertIn(
+            "--profile pki", start_calls[0], f"compose flags should forward to start.sh{debug}"
+        )
 
     def test_prompt_aborts_without_assume_yes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -262,11 +266,12 @@ class TestResetScript(unittest.TestCase):
                 timeout=10,
                 env=env,
             )
-        self.assertNotEqual(result.returncode, 0,
-                            "answering 'no' should abort the script")
+        self.assertNotEqual(result.returncode, 0, "answering 'no' should abort the script")
         # Should NOT have called docker compose down.
-        self.assertFalse([c for c in h.calls() if "compose" in c and "down" in c],
-                         "compose down should not run when prompt is answered 'no'")
+        self.assertFalse(
+            [c for c in h.calls() if "compose" in c and "down" in c],
+            "compose down should not run when prompt is answered 'no'",
+        )
 
 
 if __name__ == "__main__":
