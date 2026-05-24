@@ -64,6 +64,16 @@ CAMPAIGNS = {
         "description": "Privilege escalation via SUID/SGID binary abuse",
         "domain": 1,
     },
+    # Phase B1a: on-path attack simulation (T1557). Containers share an L2
+    # bridge so real ARP spoofing is suppressed; the campaign emits a
+    # behavioral signature at /tmp/lab_mitm.log instead.
+    "mitm": {
+        "module": "campaigns.credential_access.mitm",
+        "class": "MitmCampaign",
+        "techniques": ["T1557"],
+        "description": "On-path attack simulation -- duplicate MAC/IP binding",
+        "domain": 1,
+    },
     "lateral": {
         "module": "campaigns.lateral_movement.pass_the_hash",
         "class": "PassTheHashCampaign",

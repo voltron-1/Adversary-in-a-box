@@ -140,6 +140,39 @@ class TestDnsTunnelCampaign(unittest.TestCase):
         self.assertTrue(result["success"])
 
 
+class TestMitmCampaign(unittest.TestCase):
+    """Phase B1a: T1557 on-path attack simulation."""
+
+    def test_mitm_technique_id(self):
+        from campaigns.credential_access.mitm import MitmCampaign
+        c = MitmCampaign(target="lab", logger=MagicMock(), tagger=MagicMock())
+        self.assertEqual(c.TECHNIQUE_ID, "T1557")
+        self.assertEqual(c.TACTIC, "Credential Access")
+
+    def test_mitm_emits_spoof_signal_and_cleans_up(self):
+        from campaigns.credential_access.mitm import MitmCampaign
+        signal_path = "/tmp/lab_mitm.log"
+        # Pre-clean so this test doesn't rely on prior state.
+        if os.path.exists(signal_path):
+            os.remove(signal_path)
+        c = MitmCampaign(target="lab", logger=MagicMock(), tagger=MagicMock())
+        result = c.run()
+        self.assertTrue(result["success"])
+        self.assertTrue(os.path.exists(signal_path),
+                        "mitm campaign should have written the spoof signal")
+        # Cleanup should remove it.
+        cleanup = c.cleanup()
+        self.assertIn(signal_path, cleanup["removed"])
+        self.assertFalse(os.path.exists(signal_path))
+
+    def test_mitm_registered_in_runner(self):
+        os.environ.setdefault("LOG_DIR", tempfile.gettempdir())
+        import runner
+        self.assertIn("mitm", runner.CAMPAIGNS)
+        self.assertEqual(runner.CAMPAIGNS["mitm"]["class"], "MitmCampaign")
+        self.assertEqual(runner.TECHNIQUE_MAP.get("T1557"), "mitm")
+
+
 class TestSuidHuntCampaign(unittest.TestCase):
     """Phase A6: cover the newly-registered SuidHunt campaign."""
 

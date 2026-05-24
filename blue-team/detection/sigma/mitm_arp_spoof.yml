@@ -1,0 +1,39 @@
+title: On-Path Attack -- Duplicate MAC/IP Binding (Simulation)
+id: c1d2e3f4-1234-5678-9012-bcdef0123456
+status: experimental
+description: |
+    Detects the behavioral signature of an Adversary-in-the-Middle attack
+    (T1557): a host advertising ownership of an IP/MAC binding that
+    conflicts with the established victim address. The Adversary-in-a-Box
+    lab emits a synthetic advisory at /tmp/lab_mitm.log instead of
+    crafting real ARP frames (Docker bridges suppress them in most
+    configurations), so the rule fires on that file write plus the
+    arp_spoof_simulation event-type marker.
+references:
+    - https://attack.mitre.org/techniques/T1557/
+author: Adversary-in-a-Box Lab
+date: 2026/05/24
+tags:
+    - attack.credential_access
+    - attack.t1557
+logsource:
+    product: linux
+    service: syslog
+detection:
+    spoof_marker:
+        - 'arp_spoof_simulation'
+        - 'attacker_mac'
+        - 'LAB-SIMULATION: attacker'
+    file_target:
+        - '/tmp/lab_mitm.log'
+    condition: spoof_marker and file_target
+falsepositives:
+    - Lab-only — this rule has no production analogue. In a real
+      environment, swap the keyword selection for Zeek's duplicate-MAC
+      notice (Conn::DUPLICATE_REQUESTED_PORT or vendor-specific ARP
+      heuristics).
+level: high
+fields:
+    - CommandLine
+    - User
+    - Image

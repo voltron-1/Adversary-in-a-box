@@ -128,7 +128,17 @@ class TestSigmaRules(unittest.TestCase):
     """Validate Sigma detection rule YAML files."""
 
     SIGMA_DIR = Path(__file__).parent.parent / "blue-team" / "detection" / "sigma"
-    RULES = ["privesc_sudo.yml", "persistence_cron.yml", "exfil_https.yml"]
+
+    @classmethod
+    def setUpClass(cls):
+        # Phase B1: rules are now auto-discovered so a new campaign's paired
+        # Sigma rule is validated automatically without touching this test.
+        # `compiled/` is gitignored build output; skip it.
+        cls.RULES = sorted(
+            p.name for p in cls.SIGMA_DIR.glob("*.yml")
+            if "compiled" not in p.parts
+        )
+        assert cls.RULES, "no Sigma rules found in blue-team/detection/sigma/"
 
     def test_all_sigma_rules_exist(self):
         for rule in self.RULES:
