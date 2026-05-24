@@ -4,6 +4,7 @@ tests/test_campaigns.py — Unit tests for red team campaign modules
 import sys
 import os
 import json
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -137,6 +138,36 @@ class TestDnsTunnelCampaign(unittest.TestCase):
         campaign = DnsTunnelCampaign(target="http://test", logger=MagicMock(), tagger=MagicMock())
         result = campaign.run()
         self.assertTrue(result["success"])
+
+
+class TestSuidHuntCampaign(unittest.TestCase):
+    """Phase A6: cover the newly-registered SuidHunt campaign."""
+
+    def test_suid_hunt_technique_id(self):
+        from campaigns.privilege_escalation.suid_hunt import SuidHuntCampaign
+        campaign = SuidHuntCampaign(target="http://test",
+                                    logger=MagicMock(), tagger=MagicMock())
+        self.assertEqual(campaign.TECHNIQUE_ID, "T1548.001")
+        self.assertEqual(campaign.TACTIC, "Privilege Escalation")
+
+    def test_suid_hunt_known_exploits_table_is_populated(self):
+        from campaigns.privilege_escalation.suid_hunt import SuidHuntCampaign
+        self.assertGreater(len(SuidHuntCampaign.KNOWN_SUID_EXPLOITS), 0)
+        for binary, exploit in SuidHuntCampaign.KNOWN_SUID_EXPLOITS.items():
+            self.assertIsInstance(binary, str)
+            self.assertIsInstance(exploit, str)
+
+    def test_suid_hunt_registered_in_runner(self):
+        # Regression test for the bug Phase A6 closed: the campaign existed
+        # but wasn't in CAMPAIGNS / TECHNIQUE_MAP, so --technique T1548.001
+        # silently fell back to SudoAbuseCampaign.
+        # LOG_DIR is set because importing runner constructs AttackLogger()
+        # at module load, which mkdir's its log dir.
+        os.environ.setdefault("LOG_DIR", tempfile.gettempdir())
+        import runner
+        self.assertIn("privesc-suid", runner.CAMPAIGNS)
+        self.assertEqual(runner.CAMPAIGNS["privesc-suid"]["class"], "SuidHuntCampaign")
+        self.assertEqual(runner.TECHNIQUE_MAP.get("T1548.001"), "privesc-suid")
 
 
 class TestMitreTagger(unittest.TestCase):

@@ -49,8 +49,19 @@ CAMPAIGNS = {
     "privesc": {
         "module": "campaigns.privilege_escalation.sudo_abuse",
         "class": "SudoAbuseCampaign",
-        "techniques": ["T1548.003", "T1548.001"],
-        "description": "Privilege escalation via sudo misconfiguration + SUID abuse",
+        "techniques": ["T1548.003"],
+        "description": "Privilege escalation via sudo misconfiguration",
+        "domain": 1,
+    },
+    # Phase A6: SuidHuntCampaign existed in
+    # campaigns/privilege_escalation/suid_hunt.py but wasn't registered, so
+    # --technique T1548.001 silently fell back to SudoAbuseCampaign — same
+    # bug class as the SshHijack one closed by audit-2 Gap #10.
+    "privesc-suid": {
+        "module": "campaigns.privilege_escalation.suid_hunt",
+        "class": "SuidHuntCampaign",
+        "techniques": ["T1548.001"],
+        "description": "Privilege escalation via SUID/SGID binary abuse",
         "domain": 1,
     },
     "lateral": {
