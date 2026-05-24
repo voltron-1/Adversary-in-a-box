@@ -4,7 +4,7 @@ python-nmap==0.7.1
 paramiko==3.4.0
 dnspython==2.6.1
 cryptography==42.0.5
-pyyaml==6.0.2
+pyyaml==6.0.3
 click==8.4.1
 rich==13.7.1
 colorama==0.4.6
