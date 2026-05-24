@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import UTC, datetime
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +62,11 @@ DETECTION_WEIGHT       = _env_float("DETECTION_WEIGHT", 0.5)
 RESPONSE_WEIGHT        = _env_float("RESPONSE_WEIGHT",  0.5)
 
 
-def score_tier(elapsed_seconds: float, thresholds: list) -> tuple[float, str]:
+TierRow = tuple[int, float, str]
+ScoreReport = dict[str, Any]
+
+
+def score_tier(elapsed_seconds: float, thresholds: list[TierRow]) -> tuple[float, str]:
     """Return (multiplier, tier_label) for a given elapsed time."""
     for limit, multiplier, label in thresholds:
         if elapsed_seconds <= limit:
@@ -72,11 +77,12 @@ def score_tier(elapsed_seconds: float, thresholds: list) -> tuple[float, str]:
 class Scorer:
     """Computes red/blue team scores from ELK data using MTTD/MTTA tiers."""
 
-    def __init__(self, es_url: str | None = None):
+    def __init__(self, es_url: str | None = None) -> None:
         self.es_url = es_url or ELASTICSEARCH_URL
 
     # ------------------------------------------------------------------ ES helpers
-    def _es_search(self, index: str, body: dict, default: dict) -> dict:
+    def _es_search(self, index: str, body: dict[str, Any],
+                   default: dict[str, Any]) -> dict[str, Any]:
         try:
             import requests
             resp = requests.get(f"{self.es_url}/{index}/_search", json=body, timeout=5)
@@ -138,8 +144,8 @@ class Scorer:
         return pairs
 
     # ------------------------------------------------------------------ scoring
-    def get_blue_team_score(self) -> dict:
-        history: list[dict] = []
+    def get_blue_team_score(self) -> ScoreReport:
+        history: list[dict[str, Any]] = []
         det_points = 0.0
         resp_points = 0.0
         misses = 0
@@ -190,7 +196,7 @@ class Scorer:
             "history":          history,
         }
 
-    def get_red_team_score(self) -> dict:
+    def get_red_team_score(self) -> ScoreReport:
         completed = self._campaigns_completed()
         undetected = self._undetected_campaigns()
         base = completed * 10
@@ -204,7 +210,7 @@ class Scorer:
             "history": [],
         }
 
-    def compute_final_scores(self) -> dict:
+    def compute_final_scores(self) -> ScoreReport:
         red = self.get_red_team_score()
         blue = self.get_blue_team_score()
         if blue["total"] > red["total"]:

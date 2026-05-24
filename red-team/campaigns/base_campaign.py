@@ -9,6 +9,22 @@ import os
 import shutil
 import time
 from datetime import UTC, datetime
+from typing import Any, Protocol
+
+
+class _LoggerLike(Protocol):
+    """Phase C3: minimum surface BaseCampaign uses on a logger."""
+    def log_step(self, technique_id: str, step_name: str,
+                 detail: str, outcome: str) -> Any: ...
+
+
+class _TaggerLike(Protocol):
+    """Phase C3: placeholder -- BaseCampaign doesn't call tagger directly."""
+
+
+CampaignStep = dict[str, str]
+CampaignResult = dict[str, Any]
+CleanupReport = dict[str, Any]
 
 
 class BaseCampaign(abc.ABC):
@@ -32,18 +48,20 @@ class BaseCampaign(abc.ABC):
     TECHNIQUE_NAME: str = "Base Technique"
     TACTIC: str = "Unknown"
 
-    def __init__(self, target: str, logger=None, tagger=None):
+    def __init__(self, target: str,
+                 logger: _LoggerLike | None = None,
+                 tagger: _TaggerLike | None = None) -> None:
         self.target = target
         self.logger = logger
         self.tagger = tagger
         self.start_time = datetime.now(UTC)
-        self.steps: list = []
-        self.artifacts: list = []
+        self.steps: list[CampaignStep] = []
+        self.artifacts: list[str] = []
         self._cleanup_paths: list[str] = []
         self.success = False
 
     @abc.abstractmethod
-    def run(self) -> dict:
+    def run(self) -> CampaignResult:
         """
         Execute the campaign.
 
@@ -57,9 +75,10 @@ class BaseCampaign(abc.ABC):
         """
         raise NotImplementedError
 
-    def log_step(self, step_name: str, detail: str, outcome: str = "success"):
+    def log_step(self, step_name: str, detail: str,
+                 outcome: str = "success") -> CampaignStep:
         """Record a campaign step for reporting."""
-        step = {
+        step: CampaignStep = {
             "step": step_name,
             "detail": detail,
             "outcome": outcome,
@@ -90,7 +109,7 @@ class BaseCampaign(abc.ABC):
         self.artifacts.append(path)
         return path
 
-    def build_result(self, success: bool, message: str) -> dict:
+    def build_result(self, success: bool, message: str) -> CampaignResult:
         """Build the standardized result dict returned by run()."""
         self.success = success
         return {
@@ -106,7 +125,7 @@ class BaseCampaign(abc.ABC):
             "artifacts": self.artifacts,
         }
 
-    def simulate_delay(self, seconds: float = 1.0):
+    def simulate_delay(self, seconds: float = 1.0) -> None:
         """Add realistic timing between attack steps."""
         time.sleep(seconds)
 
@@ -116,7 +135,7 @@ class BaseCampaign(abc.ABC):
         if path and path not in self._cleanup_paths:
             self._cleanup_paths.append(path)
 
-    def cleanup(self) -> dict:
+    def cleanup(self) -> CleanupReport:
         """
         Remove any persistent state this campaign created. Default behavior:
         delete every path registered via register_cleanup_path(). Subclasses
@@ -129,7 +148,7 @@ class BaseCampaign(abc.ABC):
         """
         removed: list[str] = []
         missing: list[str] = []
-        errors: list[dict] = []
+        errors: list[dict[str, str]] = []
         for path in self._cleanup_paths:
             try:
                 if os.path.isdir(path) and not os.path.islink(path):

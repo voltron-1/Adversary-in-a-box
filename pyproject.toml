@@ -48,9 +48,7 @@ files = [
     "forensics/scoreboard/scorer.py",
 ]
 
-[[tool.mypy.overrides]]
-module = ["red-team.campaigns.base_campaign", "forensics.scoreboard.scorer"]
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-no_implicit_optional = true
-warn_unreachable = true
+# NOTE: mypy can't resolve module-name overrides for these files because the
+# packages live under dasherized directories ("red-team", "blue-team") that
+# aren't valid Python module names. The strictness is applied uniformly via
+# the top-level [tool.mypy] block plus the `--strict` CLI flag in CI.

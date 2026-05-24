@@ -38,6 +38,11 @@ jobs:
     - name: Ruff lint
       run: ruff check .
 
+    - name: Mypy strict on load-bearing modules
+      # Phase C3: only the two modules that own the type contracts get
+      # the --strict treatment; the rest of the lab is runtime duck-typed.
+      run: mypy --strict --no-incremental red-team/campaigns/base_campaign.py forensics/scoreboard/scorer.py
+
     - name: Validate Docker Compose (default profile)
       run: docker compose config --quiet
 
