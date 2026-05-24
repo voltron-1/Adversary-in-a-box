@@ -14,7 +14,7 @@
 **Organization Type:** Fictional Enterprise / Managed Service Provider  
 **Security Challenge:** The organization is vulnerable to advanced persistent threats, including credential theft, lateral movement, and data exfiltration.  
 **Demonstration:** We will replicate a multi-tiered enterprise environment (web servers, databases, endpoints) and execute a full kill-chain attack (reconnaissance, initial access, privilege escalation, lateral movement, exfiltration).  
-**Defense:** We will protect the environment by deploying a centralized SIEM (ELK/Wazuh), configuring network intrusion detection (Suricata/Zeek), and implementing incident response playbooks.  
+**Defense:** We will protect the environment by deploying a centralized SIEM (ELK -- Elasticsearch + Logstash + Kibana), configuring network intrusion detection (Suricata + Zeek), and implementing incident response playbooks.  
 **Verification:** Effectiveness will be verified by running automated Red Team campaigns and validating that alerts are triggered in the SIEM and IR playbooks successfully block the attacks.  
 
 **Course Modules Integrated:**
