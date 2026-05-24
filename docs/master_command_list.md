@@ -15,8 +15,13 @@ verified against the current `docker-compose.yml` service names (`red-team`,
 ## 0. Lab lifecycle
 
 ```bash
-# Default lab (no PKI)
-docker compose up -d
+# Preferred: wrapper runs the OQ-1 air-gap preflight, then brings up the lab.
+scripts/lab/start.sh
+scripts/lab/start.sh --profile pki    # extra flags forwarded to compose
+
+# Equivalent (preflight + compose by hand)
+bash scripts/safety/egress_test.sh --strict && docker compose up -d
+
 docker compose ps
 docker compose logs -f suricata
 

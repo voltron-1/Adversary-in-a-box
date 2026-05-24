@@ -41,8 +41,19 @@ Open `.env` and review each value. The defaults work for local lab use.
 
 ## Step 3 — Build and Start All Services
 
+Use the wrapper script — it runs the OQ-1 air-gap preflight before any
+container starts. The preflight refuses to launch if any production-side
+domain in `SAFE_MODE_DOMAINS` resolves or if any Active Directory port on
+those domains is reachable from the host.
+
 ```bash
-docker compose up -d --build
+scripts/lab/start.sh
+```
+
+Or, equivalently, run the preflight manually first:
+
+```bash
+bash scripts/safety/egress_test.sh --strict && docker compose up -d --build
 ```
 
 This pulls images and builds containers for:
