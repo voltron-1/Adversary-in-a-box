@@ -32,6 +32,8 @@ networks:
 volumes:
   es-data:
   kibana-data:
+  # Phase B2a: shared between zeek (writer) and logstash (reader).
+  zeek-logs:
   # NOTE: evidence is intentionally NOT a named volume. We bind-mount
   # ./evidence into /evidence in every container that produces or reads
   # forensic artifacts. That keeps the host-side chain-of-custody workflow
@@ -185,6 +187,34 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
+  # ZEEK NSM -- network security monitor (Phase B2a)
+  #
+  # Closes pre-existing issue #13: the detection scripts under
+  # blue-team/detection/zeek/ existed but had no runtime. Zeek sits on
+  # lab-net and writes JSON logs to a shared named volume that Logstash
+  # ingests. entrypoint.sh templates Site::local_nets from LAB_NET_PREFIX
+  # so per-student isolation flows through (Zeek has no env-var
+  # substitution at the .zeek-file level).
+  # ---------------------------------------------------------------------------
+  zeek:
+    image: zeek/zeek:7.0
+    hostname: zeek
+    networks:
+      lab-net:
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.53
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./blue-team/detection/zeek:/usr/local/zeek/share/zeek/site:ro
+      - zeek-logs:/var/log/zeek
+    environment:
+      - LAB_NET_PREFIX=${LAB_NET_PREFIX:-172.20.0}
+      - ZEEK_IFACE=eth0
+    entrypoint: ["/bin/sh", "/usr/local/zeek/share/zeek/site/entrypoint.sh"]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
   # ELK SIEM — Elasticsearch + Logstash + Kibana
   # ---------------------------------------------------------------------------
   elasticsearch:
@@ -218,7 +248,11 @@ services:
       - ./siem/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./siem/logstash/pipelines:/usr/share/logstash/pipeline:ro
       - /var/log/suricata:/suricata-logs:ro
-      - /var/log/zeek:/zeek-logs:ro
+      # Phase B2a: Zeek now writes into the shared zeek-logs named volume.
+      # Logstash reads from the same volume so per-student isolation works
+      # on Docker Desktop (the old host bind /var/log/zeek doesn't exist
+      # on Mac/Windows VMs).
+      - zeek-logs:/zeek-logs:ro
     environment:
       - LS_JAVA_OPTS=-Xms512m -Xmx512m
     depends_on:
