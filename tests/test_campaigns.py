@@ -140,6 +140,42 @@ class TestDnsTunnelCampaign(unittest.TestCase):
         self.assertTrue(result["success"])
 
 
+class TestMalwareDropCampaign(unittest.TestCase):
+    """Phase B1c: T1204 User Execution / malware drop."""
+
+    def test_malware_drop_technique_id(self):
+        from campaigns.initial_access.malware_drop import MalwareDropCampaign
+        c = MalwareDropCampaign(target="lab", logger=MagicMock(), tagger=MagicMock())
+        self.assertEqual(c.TECHNIQUE_ID, "T1204")
+        self.assertEqual(c.TACTIC, "Execution")
+
+    def test_malware_drop_writes_eicar_and_cleans_up(self):
+        from campaigns.initial_access.malware_drop import MalwareDropCampaign
+        from campaigns.phishing.payload_gen import EICAR_STRING
+
+        # Pre-clean any leftover from a previous run.
+        if os.path.exists(MalwareDropCampaign.STAGE_PATH):
+            os.remove(MalwareDropCampaign.STAGE_PATH)
+
+        c = MalwareDropCampaign(target="lab",
+                                logger=MagicMock(), tagger=MagicMock())
+        result = c.run()
+        self.assertTrue(result["success"])
+        self.assertTrue(os.path.exists(MalwareDropCampaign.STAGE_PATH))
+        with open(MalwareDropCampaign.STAGE_PATH) as f:
+            self.assertIn(EICAR_STRING, f.read())
+
+        cleanup = c.cleanup()
+        self.assertIn(MalwareDropCampaign.STAGE_PATH, cleanup["removed"])
+        self.assertFalse(os.path.exists(MalwareDropCampaign.STAGE_PATH))
+
+    def test_malware_drop_registered_in_runner(self):
+        os.environ.setdefault("LOG_DIR", tempfile.gettempdir())
+        import runner
+        self.assertIn("malware-drop", runner.CAMPAIGNS)
+        self.assertEqual(runner.TECHNIQUE_MAP.get("T1204"), "malware-drop")
+
+
 class TestBruteForceCampaign(unittest.TestCase):
     """Phase B1b: T1110 credential brute force."""
 

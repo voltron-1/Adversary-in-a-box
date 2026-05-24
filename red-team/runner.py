@@ -46,6 +46,15 @@ CAMPAIGNS = {
         "description": "Exploit public-facing web application (OWASP Top 10)",
         "domain": 1,
     },
+    # Phase B1c: standalone malware-drop (T1204). Stages EICAR to a known
+    # path; reversible via --cleanup-all.
+    "malware-drop": {
+        "module": "campaigns.initial_access.malware_drop",
+        "class": "MalwareDropCampaign",
+        "techniques": ["T1204"],
+        "description": "Drop EICAR test payload (benign AV-fail marker)",
+        "domain": 1,
+    },
     "privesc": {
         "module": "campaigns.privilege_escalation.sudo_abuse",
         "class": "SudoAbuseCampaign",
