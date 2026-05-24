@@ -1,0 +1,59 @@
+name: Integration (Full Kill Chain)
+
+# Phase C4. This workflow spins up the entire compose stack and runs the
+# kill chain end-to-end. It is gated on workflow_dispatch because:
+#   * docker compose up takes 3-5 minutes on the GitHub runner
+#   * ELK eats most of the runner's 7GB
+# So it would dominate the PR feedback loop if it ran on every push.
+#
+# Trigger manually from the GitHub Actions UI, or via:
+#   gh workflow run integration.yml
+on:
+  workflow_dispatch:
+  # Optional weekly safety net so dependency rot is caught even if no
+  # one remembers to trigger it manually.
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays at 06:00 UTC
+
+jobs:
+  killchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Prepare .env (skip egress preflight, accept default profile)
+      run: |
+        cp .env.example .env
+        # The runner is on the public internet -- the preflight would
+        # refuse to start. Air-gap is enforced via lab-net internal:true
+        # at the network layer, which still applies.
+        echo "AIB_SKIP_PREFLIGHT=1" >> "$GITHUB_ENV"
+
+    - name: Build + start the lab
+      run: bash scripts/lab/start.sh
+
+    - name: Tail compose ps for diagnostics
+      run: docker compose ps
+
+    - name: Run integration test
+      env:
+        AIB_RUN_INTEGRATION: "1"
+        EVIDENCE_DIR: ${{ runner.temp }}/evidence
+      run: |
+        mkdir -p "$EVIDENCE_DIR"
+        python -m unittest discover -s tests/integration -v
+
+    - name: Dump compose logs on failure
+      if: failure()
+      run: docker compose logs --tail=200
+
+    - name: Tear down
+      if: always()
+      run: docker compose down -v
