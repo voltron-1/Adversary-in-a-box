@@ -97,6 +97,36 @@ README badge claims Security+ SY0-701; the cert spans 5 domains; only
 
 ---
 
+## Phase F — Automation Coverage
+
+> Filed after the post-Phase-E gap audit (2026-05-24). CI currently
+> covers about 70% of what's automatable; this phase closes the
+> remaining 30%. All issues #93-#104, milestone M12. Most items are
+> XS-S; total scope is one focused day of work.
+
+| # | Item | Size | Acceptance |
+|---|---|---|---|
+| F1 | **Integration test asserts ≥1 alert per registered technique** (not just ≥1 total). | S | `tests/integration/test_killchain.py` walks `runner.TECHNIQUE_MAP` and asserts per-technique alert presence. |
+| F2 | **CI test for `scripts/lab/reset.sh`** with mocked `subprocess.run`. | S | New `tests/test_reset_script.py`; asserts 5-step ordered invocation. |
+| F3 | **CI test for `scripts/lab/start.sh`** healthcheck-poll loop. | S | Mocks `docker compose ps --format json`; asserts exit 0 healthy / 1 timeout / 1 exited. |
+| F4 | **Expand mypy coverage beyond `BaseCampaign` + `Scorer`.** | M | `mypy --strict` clean on every `red-team/campaigns/*` and `forensics/*` module, OR documented `--disable-error-code` per file. |
+| F5 | **`docker build` smoke test in CI.** Catches missing wheels for new base images (the python:3.14-slim regression class). | M | New CI step builds red-team + blue-team + forensics/scoreboard images. |
+| F6 | **`pre-commit run --all-files` in CI** so local + CI agree. | XS | New CI step; runs after the Ruff step. |
+| F7 | **Dependabot.yml schema validation.** | XS | `yamllint` or `gh api .../dependabot.yml/contents` check in CI. |
+| F8 | **Coverage report in CI** with a configured floor (e.g. 80%). | S | `pytest-cov` or `coverage.py`; CI fails on regression below floor. |
+| F9 | **Integration test asserts healthchecks report healthy** (not just running). | XS | Per-service `Health` field check in `test_killchain.py`. |
+| F10 | **Unit test that MITM Sigma rule fires on a sample log line.** Catches the `logsource`-gap class (TESTING_TODO Priority 5). | S | `tests/test_sigma_rules.py` compiles the rule + asserts it matches a synthetic event. |
+| F11 | **README + tutorial freshness check.** Grep markdown for shell commands; verify each referenced file/script/campaign exists in tree. | M | New CI step; doc drift is the silent-rot failure mode this targets. |
+| F12 | **`bash -n` syntax check on every shell script** before ShellCheck. | XS | New CI step; catches missing `fi` / `done` that ShellCheck sometimes misses. |
+
+### Phase F sequencing recommendation
+
+1. **F6, F7, F12, F9** first — XS items, batch into one PR. Most leverage per minute.
+2. **F2, F3, F1, F8, F10** next — S items, one PR each (each adds a discrete test file).
+3. **F4, F5, F11** last — M items. F5 is the highest-leverage of these (would have caught the audit-2 Gap #8 pysigma issue).
+
+---
+
 ## Phase E — Nice-to-have
 
 Things that would polish the experience but aren't blocking anything.
@@ -120,6 +150,7 @@ The ordering that minimizes wasted work:
 4. **B2a (Zeek wiring)** opens up an extra signal for B1 campaigns. Do it after B1c.
 5. **C-phase items** as drive-bys when touching the relevant area (linting on first Python change, healthcheck on first compose change).
 6. **D-phase** is best done as a single "release prep" sweep before tagging `v0.1.0`.
+7. **F-phase** (automation coverage) lands after a clean `v0.2.1` patch release that blesses the manually-verified dependency-bumped stack. Don't gate v0.2.1 on it.
 
 ---
 
