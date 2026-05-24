@@ -5,11 +5,10 @@ Tags campaign events with ATT&CK metadata and emits enriched events
 to the ELK SIEM via HTTP for real-time detection and correlation.
 """
 
-import json
 import os
-import requests
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import requests
 
 # MITRE ATT&CK technique metadata index
 TECHNIQUE_METADATA = {
@@ -122,7 +121,7 @@ class MitreTagger:
                 },
                 "severity": meta["severity"],
             },
-            "@timestamp": datetime.now(timezone.utc).isoformat(),
+            "@timestamp": datetime.now(UTC).isoformat(),
             "event.kind": "alert",
             "event.category": "intrusion_detection",
             "source.ip": os.environ.get("ATTACKER_IP", "172.20.0.10"),

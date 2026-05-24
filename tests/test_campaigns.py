@@ -3,7 +3,6 @@ tests/test_campaigns.py — Unit tests for red team campaign modules
 """
 import sys
 import os
-import json
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch

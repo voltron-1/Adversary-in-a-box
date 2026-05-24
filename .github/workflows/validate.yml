@@ -32,6 +32,11 @@ jobs:
                    forensics/scoreboard/requirements.txt; do
           if [ -f "$req" ]; then pip install -r "$req"; fi
         done
+        # Phase C1: ruff + mypy for lint / type checks.
+        pip install ruff mypy
+
+    - name: Ruff lint
+      run: ruff check .
 
     - name: Validate Docker Compose (default profile)
       run: docker compose config --quiet

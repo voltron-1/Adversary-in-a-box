@@ -13,10 +13,9 @@ Implements OQ-5 (ADR 0001):
 
 from __future__ import annotations
 
-import os
 import logging
-from datetime import datetime, timezone
-from typing import Iterable
+import os
+from datetime import UTC, datetime
 
 log = logging.getLogger(__name__)
 
@@ -215,7 +214,7 @@ class Scorer:
         else:
             winner = "tie"
         return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "red_team": red,
             "blue_team": blue,
             "winner": winner,

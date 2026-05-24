@@ -4,13 +4,13 @@ blue-team/response/playbook_engine.py -- IR Playbook Execution Engine
 Loads and executes YAML-defined incident response playbooks.
 """
 
-import os
-import yaml
 import json
+import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
+import yaml
 
 PLAYBOOK_DIR = Path(__file__).parent / "playbooks"
 ACTIONS_DIR = Path(__file__).parent / "actions"
@@ -24,7 +24,7 @@ class PlaybookEngine:
         self.playbook_name = playbook_name
         self.playbook = self._load_playbook(playbook_name)
         self.execution_log = []
-        self.start_time = datetime.now(timezone.utc)
+        self.start_time = datetime.now(UTC)
 
     def _load_playbook(self, name: str) -> dict:
         path = PLAYBOOK_DIR / f"{name}.yml"
@@ -52,7 +52,7 @@ class PlaybookEngine:
         summary = {
             "playbook": self.playbook_name,
             "start_time": self.start_time.isoformat(),
-            "end_time": datetime.now(timezone.utc).isoformat(),
+            "end_time": datetime.now(UTC).isoformat(),
             "steps_total": len(self.playbook.get("steps", [])),
             "steps_completed": sum(1 for r in results if r["success"]),
             "results": results,
@@ -87,13 +87,13 @@ class PlaybookEngine:
                 result = {"output": f"Unknown action: {action}", "success": False}
 
             result["step"] = step_name
-            result["timestamp"] = datetime.now(timezone.utc).isoformat()
+            result["timestamp"] = datetime.now(UTC).isoformat()
             print(f"    [ok] {result.get('output', 'Done')}")
             return result
 
         except Exception as exc:
             error = {"step": step_name, "success": False, "error": str(exc),
-                     "timestamp": datetime.now(timezone.utc).isoformat()}
+                     "timestamp": datetime.now(UTC).isoformat()}
             print(f"    [FAIL] Failed: {exc}")
             return error
 

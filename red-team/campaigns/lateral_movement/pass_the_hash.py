@@ -3,9 +3,10 @@ campaigns/lateral_movement/pass_the_hash.py — T1550.002 Pass the Hash
 MITRE ATT&CK: T1550.002 | Tactic: Lateral Movement
 """
 
-import os
 import json
-from datetime import datetime, timezone
+import os
+from datetime import UTC, datetime
+
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -35,7 +36,7 @@ class PassTheHashCampaign(BaseCampaign):
             "target": self.TARGET_DB,
             "hash_extracted": extracted_hash,
             "auth_result": auth_result,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("pth_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"Pass-the-Hash demonstrated against {self.TARGET_DB}")

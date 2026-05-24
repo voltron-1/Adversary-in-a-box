@@ -8,16 +8,17 @@ MITRE ATT&CK: T1566.001 — Phishing: Spearphishing Attachment
 Tactic: Initial Access
 """
 
+import json
 import os
 import smtplib
-import json
+from datetime import UTC, datetime
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
-from datetime import datetime, timezone
 
 from campaigns.base_campaign import BaseCampaign
+
 from .payload_gen import PayloadGenerator
 
 
@@ -64,7 +65,7 @@ class SpearPhishCampaign(BaseCampaign):
                 "target_email": self.TARGET_EMAIL,
                 "spoofed_sender": self.SPOOFED_SENDER,
                 "payload_hash": payload_hash,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }, indent=2)
             self.save_artifact("phishing_evidence.json", artifact_data)
             return self.build_result(True, "Phishing email delivered successfully")
@@ -100,7 +101,7 @@ For support, contact hr@trusted-corp.com
             part = MIMEBase("application", "octet-stream")
             part.set_payload(f.read())
         encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f'attachment; filename="Benefits_Form_2024.pdf"')
+        part.add_header("Content-Disposition", 'attachment; filename="Benefits_Form_2024.pdf"')
         msg.attach(part)
 
         return msg

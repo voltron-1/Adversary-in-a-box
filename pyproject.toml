@@ -1,0 +1,56 @@
+# pyproject.toml -- Adversary-in-a-Box
+#
+# Phase C1: project-wide tooling config. The lab is split across three
+# Python codebases (red-team, blue-team, forensics) -- this file
+# centralizes lint / type / format rules so they stay consistent.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "blue-team/detection/sigma/compiled",  # generated EQL output
+    "docs/course",                          # third-party PDFs/DOCX
+    "GH Framework",                         # legacy (now empty)
+    "evidence",                             # forensic artifacts
+    "reports",                              # generated reports
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+# Conservative starter ruleset -- pyflakes + pycodestyle errors + import
+# sort. Avoid stylistic noise (no W, no docstring rules) so this lands
+# with zero or near-zero findings on the existing codebase.
+select = [
+    "E",      # pycodestyle errors (NOT W -- avoid line-too-long churn)
+    "F",      # pyflakes (unused imports, undefined names)
+    "I",      # isort
+    "B",      # flake8-bugbear (likely-bug patterns)
+    "UP",     # pyupgrade (e.g. catches datetime.utcnow style regressions)
+]
+ignore = [
+    "E501",   # line too long -- handled by formatter, not a hard error
+    "B008",   # function calls in defaults -- Flask uses this idiomatically
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests import-then-mutate-then-import; relaxed isort is fine.
+"tests/*" = ["E402", "I001"]
+
+[tool.mypy]
+# Phase C3: strict only on the two modules that own load-bearing types.
+# Rest of the lab uses runtime duck-typing and isn't worth the audit.
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+files = [
+    "red-team/campaigns/base_campaign.py",
+    "forensics/scoreboard/scorer.py",
+]
+
+[[tool.mypy.overrides]]
+module = ["red-team.campaigns.base_campaign", "forensics.scoreboard.scorer"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+warn_unreachable = true

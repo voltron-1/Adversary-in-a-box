@@ -6,11 +6,10 @@ Hashes all evidence files and maintains a tamper-evident JSON custody log.
 Usage: python chain_of_custody.py --hash-dir /evidence [--verify]
 """
 
+import argparse
 import hashlib
 import json
-import os
-import argparse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -29,7 +28,7 @@ def hash_directory(directory: Path) -> dict:
         "tool": "chain_of_custody.py",
         "version": "1.0",
         "algorithm": "SHA-256",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "evidence_dir": str(directory),
         "files": [],
     }
@@ -43,7 +42,7 @@ def hash_directory(directory: Path) -> dict:
                     "path": str(path.relative_to(directory)),
                     "sha256": file_hash,
                     "size_bytes": stat.st_size,
-                    "modified": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                    "modified": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
                 })
                 print(f"  [ok] {path.name}: {file_hash}")
             except (PermissionError, OSError) as e:

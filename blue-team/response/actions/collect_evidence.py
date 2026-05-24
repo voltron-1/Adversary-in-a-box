@@ -4,11 +4,11 @@ blue-team/response/actions/collect_evidence.py
 Forensic artifact collector -- gathers logs and hashes them for chain of custody.
 """
 
-import os
 import hashlib
 import json
+import os
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 EVIDENCE_DIR = Path(os.environ.get("EVIDENCE_DIR", "/evidence"))
@@ -36,7 +36,7 @@ def collect():
     session_dir.mkdir()
 
     manifest = {
-        "collection_time": datetime.now(timezone.utc).isoformat(),
+        "collection_time": datetime.now(UTC).isoformat(),
         "collector": "collect_evidence.py",
         "artifacts": [],
     }

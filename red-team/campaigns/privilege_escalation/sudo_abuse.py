@@ -3,10 +3,10 @@ campaigns/privilege_escalation/sudo_abuse.py — T1548.003 Sudo and Sudo Caching
 MITRE ATT&CK: T1548.003 | Tactic: Privilege Escalation
 """
 
-import subprocess
-import os
 import json
-from datetime import datetime, timezone
+import subprocess
+from datetime import UTC, datetime
+
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -33,7 +33,7 @@ class SudoAbuseCampaign(BaseCampaign):
             "technique": self.TECHNIQUE_ID,
             "sudo_rules": sudo_rules,
             "gtfobins_matches": escalation_paths,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("privesc_sudo_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"{len(escalation_paths)} escalation paths found")
@@ -41,7 +41,7 @@ class SudoAbuseCampaign(BaseCampaign):
     def _enumerate_sudo(self) -> list:
         try:
             result = subprocess.run(["sudo", "-l", "-n"], capture_output=True, text=True, timeout=5)
-            lines = [l.strip() for l in result.stdout.splitlines() if "(" in l]
+            lines = [line.strip() for line in result.stdout.splitlines() if "(" in line]
             return lines if lines else ["(simulated) ALL=(ALL) NOPASSWD: /usr/bin/find"]
         except Exception:
             return ["(simulated) ALL=(ALL) NOPASSWD: /usr/bin/find"]

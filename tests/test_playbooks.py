@@ -3,10 +3,9 @@ tests/test_playbooks.py — Unit tests for IR playbook engine and playbooks
 """
 import sys
 import os
-import json
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 # Add blue-team to path

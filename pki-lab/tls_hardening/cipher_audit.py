@@ -7,11 +7,10 @@ Domain 3 Exercise 3.2 — SY0-701
 Usage: python cipher_audit.py --host <hostname> [--port 443]
 """
 
-import ssl
-import socket
 import argparse
-from datetime import datetime, timezone
-
+import socket
+import ssl
+from datetime import UTC, datetime
 
 WEAK_PROTOCOLS = {ssl.PROTOCOL_TLS_CLIENT}
 WEAK_CIPHERS = ["RC4", "3DES", "DES", "NULL", "EXPORT", "ANON", "MD5", "CBC"]
@@ -67,9 +66,9 @@ def get_certificate_info(host: str, port: int) -> dict:
 def audit(host: str, port: int = 443):
     """Run complete TLS audit against a host."""
     print(f"\n{'='*60}")
-    print(f"  TLS Cipher Audit — Adversary-in-a-Box Lab")
+    print("  TLS Cipher Audit — Adversary-in-a-Box Lab")
     print(f"  Target: {host}:{port}")
-    print(f"  Time: {datetime.now(timezone.utc).isoformat()}")
+    print(f"  Time: {datetime.now(UTC).isoformat()}")
     print(f"{'='*60}\n")
 
     # Get connection info
@@ -81,7 +80,7 @@ def audit(host: str, port: int = 443):
         print(f"[i] Certificate expires: {cert_info['not_after']}")
     else:
         print(f"[!] Could not connect: {cert_info['error']}")
-        print(f"[i] Running in simulation mode...")
+        print("[i] Running in simulation mode...")
 
     print()
 
@@ -118,7 +117,7 @@ def audit(host: str, port: int = 443):
     passes = sum(1 for r in results if r["status"] == "PASS")
     fails = sum(1 for r in results if r["status"] == "FAIL")
     print(f"Results: {passes} PASS / {fails} FAIL")
-    print(f"\nFor a hardened config, see: pki-lab/tls_hardening/nginx-tls.conf")
+    print("\nFor a hardened config, see: pki-lab/tls_hardening/nginx-tls.conf")
 
 
 if __name__ == "__main__":

@@ -3,10 +3,11 @@ campaigns/persistence/cron_backdoor.py — T1053.003 Scheduled Task/Job: Cron
 MITRE ATT&CK: T1053.003 | Tactic: Persistence
 """
 
-import subprocess
-import os
 import json
-from datetime import datetime, timezone
+import os
+import subprocess
+from datetime import UTC, datetime
+
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -50,7 +51,7 @@ class CronBackdoorCampaign(BaseCampaign):
             "cron_entry": f"*/5 * * * * {script_path}",
             "c2": f"{self.C2_IP}:{self.C2_PORT}",
             "install_result": cron_result,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("cron_backdoor_results.json", json.dumps(results, indent=2))
         return self.build_result(True, "Cron persistence demonstrated (simulation)")
@@ -84,7 +85,7 @@ echo "[$(date)] LAB beacon ping to {self.C2_IP}:{self.C2_PORT}" >> /tmp/lab_beac
             current = result.stdout if result.returncode == 0 else ""
             if script_path not in current:
                 new_cron = current + cron_entry
-                proc = subprocess.run(
+                subprocess.run(
                     ["crontab", "-"],
                     input=new_cron, capture_output=True, text=True, timeout=5
                 )

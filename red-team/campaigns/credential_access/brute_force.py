@@ -17,9 +17,8 @@ Safety bounds (per OQ-1):
 """
 
 import json
-import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from campaigns.base_campaign import BaseCampaign
 
@@ -88,7 +87,7 @@ class BruteForceCampaign(BaseCampaign):
             "attempts": len(self.WORDLIST),
             "successes": successes,
             "failures": failures,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("brute_force_results.json", json.dumps(results, indent=2))
         return self.build_result(

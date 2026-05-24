@@ -15,7 +15,7 @@ ransomware_ir.yml playbook end-to-end without any data being at risk.
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from campaigns.base_campaign import BaseCampaign
 
@@ -96,7 +96,7 @@ Or trigger the paired IR playbook from the blue-team container:
             "decoy_dir": self.DECOY_DIR,
             "renames": renames,
             "ransom_note": note_path,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("ransomware_sim_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"Ransomware simulated -- {len(renames)} files locked")

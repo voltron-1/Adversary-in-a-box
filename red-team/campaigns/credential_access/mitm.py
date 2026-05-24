@@ -16,8 +16,7 @@ detection logic safely.
 import json
 import os
 import socket
-import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from campaigns.base_campaign import BaseCampaign
 
@@ -55,7 +54,7 @@ class MitmCampaign(BaseCampaign):
                 f"ownership of {real_ip} ({self.SPOOFED_VICTIM}). "
                 "Detection: duplicate MAC/IP binding."
             ),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.log_step("spoof_advert", f"Emitted spoof advisory for {real_ip}")
 

@@ -20,8 +20,7 @@ import os
 import sys
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 # Industry-standard AV test string. Triggers signatures without executing.
 EICAR_STRING = (
@@ -41,7 +40,7 @@ class PayloadPlan:
     """A plan for a payload: what would be written, where, and why."""
     technique: str
     description: str
-    target_path: Optional[str]
+    target_path: str | None
     content_preview: str
 
     def render(self) -> str:
@@ -82,7 +81,7 @@ class PayloadGenerator:
         content = f"""BENEFITS ENROLLMENT FORM — LAB SIMULATION
 ========================================
 This is a simulated phishing payload for the Adversary-in-a-Box lab.
-Generated: {datetime.now(timezone.utc).isoformat()}
+Generated: {datetime.now(UTC).isoformat()}
 Technique: T1566.001 — Spearphishing Attachment
 
 [BENIGN AV MARKER]

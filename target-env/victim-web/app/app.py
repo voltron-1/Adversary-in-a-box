@@ -4,9 +4,9 @@ Intentionally vulnerable Flask web application — OWASP Top 10 lab target.
 WARNING: This application is deliberately insecure. Do NOT expose to the internet.
 """
 
-import os
 import sqlite3
-from flask import Flask, request, render_template_string, redirect, session, make_response
+
+from flask import Flask, render_template_string, request, session
 
 app = Flask(__name__)
 app.secret_key = "super-insecure-secret-123"  # Intentionally weak

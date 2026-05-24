@@ -14,12 +14,12 @@ Usage:
 import os
 import sys
 import time
+
 import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
-
 from utils.logger import AttackLogger
 from utils.mitre_tagger import MitreTagger
 
@@ -229,7 +229,7 @@ def _run_single_campaign(name, cfg, target_override=None):
         result = instance.run()
 
         if result.get("success"):
-            console.print(f"[bold green]✓ Campaign completed successfully[/bold green]")
+            console.print("[bold green]✓ Campaign completed successfully[/bold green]")
         else:
             console.print(f"[yellow]⚠ Campaign completed with warnings: {result.get('message')}[/yellow]")
 

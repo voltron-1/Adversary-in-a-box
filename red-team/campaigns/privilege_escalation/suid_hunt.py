@@ -3,9 +3,10 @@ campaigns/privilege_escalation/suid_hunt.py — T1548.001 Setuid and Setgid
 MITRE ATT&CK: T1548.001 | Tactic: Privilege Escalation
 """
 
-import subprocess
 import json
-from datetime import datetime, timezone
+import subprocess
+from datetime import UTC, datetime
+
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -33,7 +34,7 @@ class SuidHuntCampaign(BaseCampaign):
             "technique": self.TECHNIQUE_ID,
             "suid_binaries": suid_bins,
             "exploitable": matches,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("suid_hunt_results.json", json.dumps(results, indent=2))
         return self.build_result(True, f"Found {len(matches)} exploitable SUID binaries")

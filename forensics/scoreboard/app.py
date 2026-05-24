@@ -4,11 +4,10 @@ Tracks and displays red/blue team scores in real-time.
 """
 
 import os
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request
 
+from flask import Flask, jsonify, render_template, request
 from scorer import Scorer  # OQ-5: MTTD/MTTA tiered scoring
 
 app = Flask(__name__)
@@ -57,7 +56,7 @@ def scoreboard():
     scores = _compute_scores()
     return render_template("scoreboard.html", scores=scores,
                            rules=MANUAL_OVERRIDE_RULES,
-                           now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"))
+                           now=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
 
 
 @app.route("/api/scores")
@@ -91,7 +90,7 @@ def award_points():
         "event": event,
         "points": points,
         "detail": detail,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     })
     return jsonify({"awarded": points, "total": MANUAL_SCORES[team]["total"]})
 
@@ -125,7 +124,7 @@ def _compute_scores() -> dict:
         scores["winner"] = "red_team"
     else:
         scores["winner"] = "tie"
-    scores["last_updated"] = datetime.now(timezone.utc).isoformat()
+    scores["last_updated"] = datetime.now(UTC).isoformat()
     return scores
 
 

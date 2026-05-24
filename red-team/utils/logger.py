@@ -8,7 +8,7 @@ for ingestion into the ELK SIEM stack.
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -50,7 +50,7 @@ class AttackLogger:
 
     def _emit(self, event: dict):
         """Emit a structured JSON log event."""
-        event.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+        event.setdefault("timestamp", datetime.now(UTC).isoformat())
         event.setdefault("source", "red-team")
         self._logger.info(json.dumps(event))
 

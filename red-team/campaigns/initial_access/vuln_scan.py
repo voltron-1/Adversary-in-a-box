@@ -8,10 +8,11 @@ MITRE ATT&CK: T1595 — Active Scanning | T1589 — Gather Victim Identity
 Tactic: Reconnaissance
 """
 
-import os
 import json
+import os
 import socket
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from campaigns.base_campaign import BaseCampaign
 
 
@@ -57,7 +58,7 @@ class VulnScanCampaign(BaseCampaign):
         # Save results
         results = {
             "target": target_ip,
-            "scan_time": datetime.now(timezone.utc).isoformat(),
+            "scan_time": datetime.now(UTC).isoformat(),
             "open_ports": open_ports,
             "services": services,
             "banners": banners,
@@ -79,7 +80,7 @@ class VulnScanCampaign(BaseCampaign):
                 s.close()
                 if result == 0:
                     open_ports.append(port)
-            except (socket.error, OSError):
+            except OSError:
                 pass
         return open_ports
 
