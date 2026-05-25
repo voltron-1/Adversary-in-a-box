@@ -1,5 +1,5 @@
 requests==2.31.0
-scapy==2.5.0
+scapy==2.7.0
 python-nmap==0.7.1
 paramiko==5.0.0
 dnspython==2.8.0
