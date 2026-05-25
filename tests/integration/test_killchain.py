@@ -74,20 +74,69 @@ TECHNIQUE_KEYWORDS: dict[str, list[str]] = {
 # network-side detection, so we don't require Suricata coverage.
 HOST_ONLY_TECHNIQUES = {"T1098.004", "T1053.003"}
 
+# Campaigns whose run() intentionally simulates the attack without
+# putting bytes on the wire (for lab-safety reasons). Suricata's
+# local.rules HAS signatures for these techniques, but the simulated
+# campaigns never produce matching packets so the rules can't fire.
+# Each entry is justified by the explicit "simulate"/"NO ACTUAL"
+# comment in the campaign source. Re-evaluate this set if any campaign
+# is rewritten to fire real-but-safe traffic (e.g. against a sinkhole
+# inside lab-net).
+SIMULATED_ONLY_TECHNIQUES = {
+    "T1041",      # https_exfil.py -- simulated HTTPS beacon
+    "T1048.003",  # dns_tunnel.py -- "Simulate DNS query exfiltration (no actual DNS queries made)"
+    "T1110",      # brute_force.py -- simulated credential spray
+    "T1204",      # malware_drop.py -- EICAR written locally, never transferred
+    "T1486",      # ransomware_sim.py -- local file ops with "NO ACTUAL ENCRYPTION" marker
+    "T1548.001",  # suid_hunt.py -- local SUID enumeration only
+    "T1548.003",  # sudo_abuse.py -- local sudo enumeration only
+    "T1550.002",  # pass_the_hash.py -- simulated SMB auth
+    "T1557",      # mitm.py -- simulated ARP spoof advisory
+    "T1566.001",  # spear_phish.py -- payload generated, SMTP send simulated
+}
+
 
 def _es_query(query: dict) -> dict:
-    """Hit the lab's ES :9200 from the host. Returns parsed JSON, or {} on error."""
+    """Hit the lab's ES :9200. Returns parsed JSON, or {} on error.
+
+    Fast path: HTTP to http://localhost:9200. Works on Linux hosts (incl.
+    GitHub Actions CI runners) where docker port-publish maps to the
+    same localhost the test process sees.
+
+    Fallback: `docker compose exec` curl inside a container on lab-net.
+    Needed for Docker Desktop on Windows + WSL2 where published ports
+    bind to the Windows host's localhost, not the WSL2 distro's.
+    """
+    body = json.dumps(query).encode()
     url = "http://localhost:9200/suricata-*/_search?size=0"
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(query).encode(),
-        headers={"Content-Type": "application/json"},
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
             return json.load(resp)
     except Exception:
-        return {}
+        pass
+    try:
+        proc = subprocess.run(
+            [
+                "docker", "compose", "exec", "-T", "scoreboard",
+                "curl", "-sm10", "-H", "Content-Type: application/json",
+                "-d", body.decode(),
+                "http://elasticsearch:9200/suricata-*/_search?size=0",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return json.loads(proc.stdout)
+    except Exception:
+        pass
+    return {}
 
 
 @unittest.skipUnless(
@@ -124,6 +173,26 @@ class TestFullKillchain(unittest.TestCase):
                 f"STDERR:\n{cls.startup_proc.stderr}"
             )
 
+        # Run the full kill chain ONCE here so every test method sees the
+        # same post-attack state. unittest runs methods in alphabetical
+        # order; the previous design ran the kill chain only inside
+        # test_full_killchain_produces_alerts, which meant
+        # test_alerts_cover_each_registered_technique (sorted earlier)
+        # asserted against pre-kill-chain ES state and saw only startup
+        # SCAN noise from logstash<->ES probing.
+        cls.killchain_proc = subprocess.run(
+            [
+                "docker", "compose", "exec", "-T", "red-team",
+                "python", "runner.py", "--campaign", "full-killchain",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        # Give ELK 30s to ingest. tests/integration runs against this state.
+        time.sleep(30)
+
     @classmethod
     def tearDownClass(cls) -> None:
         subprocess.run(
@@ -134,32 +203,16 @@ class TestFullKillchain(unittest.TestCase):
         )
 
     def test_full_killchain_produces_alerts(self) -> None:
-        # Run the full kill chain in the red-team container.
-        proc = subprocess.run(
-            [
-                "docker",
-                "compose",
-                "exec",
-                "-T",
-                "red-team",
-                "python",
-                "runner.py",
-                "--campaign",
-                "full-killchain",
-            ],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
+        # setUpClass already ran the kill chain and waited for ingest.
+        # This test just asserts the runner exited 0 and at least one
+        # Suricata alert reached ES.
         self.assertEqual(
-            proc.returncode,
+            self.killchain_proc.returncode,
             0,
-            f"full-killchain run failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+            "full-killchain run failed:\n"
+            f"STDOUT:\n{self.killchain_proc.stdout}\n"
+            f"STDERR:\n{self.killchain_proc.stderr}",
         )
-
-        # Give ELK 30 seconds to ingest the campaign-generated traffic.
-        time.sleep(30)
 
         # Assert Suricata has at least one alert.
         result = _es_query({"query": {"match_all": {}}})
@@ -187,6 +240,8 @@ class TestFullKillchain(unittest.TestCase):
         missing: list[str] = []
         for technique in sorted(runner.TECHNIQUE_MAP.keys()):
             if technique in HOST_ONLY_TECHNIQUES:
+                continue
+            if technique in SIMULATED_ONLY_TECHNIQUES:
                 continue
             keywords = TECHNIQUE_KEYWORDS.get(technique, [technique])
 
