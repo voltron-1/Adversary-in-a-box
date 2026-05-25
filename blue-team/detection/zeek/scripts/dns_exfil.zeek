@@ -15,8 +15,7 @@ export {
 # Track DNS query counts per source IP
 global dns_query_counts: table[addr] of count &create_expire=120sec &default=0;
 
-event dns_request(c: connection, msg: dns_msg, qtype: count, qclass: count) {
-    local query = c$dns$query;
+event dns_request(c: connection, msg: dns_msg, query: string, qtype: count, qclass: count) {
     local src = c$id$orig_h;
 
     # Detect long subdomains (possible base32/base64 encoded data)

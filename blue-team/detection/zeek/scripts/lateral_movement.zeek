@@ -23,7 +23,7 @@ export {
 # Track SSH authentication failures per source
 global ssh_failures: table[addr] of count &create_expire=120sec &default=0;
 
-event ssh_auth_failed(c: connection, authenticated: bool, peers: count, direction: count) {
+event ssh_auth_failed(c: connection) {
     local src = c$id$orig_h;
     local dst = c$id$resp_h;
 
