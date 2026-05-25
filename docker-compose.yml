@@ -243,8 +243,13 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
       interval: 10s
       timeout: 10s
-      retries: 12
-      start_period: 30s
+      retries: 18
+      # Phase F follow-up: bumped from 30s. ES on a cold GitHub
+      # runner regularly needs 60-90s before its JVM accepts queries,
+      # which was tripping the C7 healthcheck during the integration
+      # workflow (run 26380249772 hit the start.sh 180s ceiling with
+      # ES still starting).
+      start_period: 90s
     ulimits:
       memlock:
         soft: -1
@@ -290,12 +295,13 @@ services:
     mem_limit: 1g
     # Phase C7: Kibana exposes /api/status that returns 200 only after
     # the app + plugins finish initializing.
+    # Phase F follow-up: start_period bumped to 120s for slow runners.
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 20
-      start_period: 60s
+      retries: 24
+      start_period: 120s
     depends_on:
       elasticsearch:
         condition: service_healthy

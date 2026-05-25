@@ -35,7 +35,10 @@ docker compose up -d --build "$@"
 # Phase C7: poll docker compose ps until every healthcheck'd service
 # reports healthy, OR exit early if any container exits.
 echo "[start] waiting for services to report healthy..."
-DEADLINE=$(( $(date +%s) + 180 ))   # 3-minute ceiling
+# Phase F follow-up: 360s ceiling. ES alone needs 60-90s on a cold
+# GitHub runner; Kibana waits on ES + initializes another ~60-90s.
+# 180s was too tight (run 26380249772 timeout).
+DEADLINE=$(( $(date +%s) + 360 ))
 
 while :; do
     # JSON output gives us per-service Health/State without depending on
