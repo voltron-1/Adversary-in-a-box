@@ -3,7 +3,7 @@ requests==2.34.2
 # Phase A1: bumped from 6.0.1 — pysigma-backend-elasticsearch 1.1.6 requires
 # pyyaml>=6.0.2, conflict broke CI dependency install (run 26348906189).
 pyyaml==6.0.3
-elasticsearch==8.13.0
+elasticsearch==9.4.0
 rich==15.0.0
 click==8.4.1
 python-dateutil==2.9.0
