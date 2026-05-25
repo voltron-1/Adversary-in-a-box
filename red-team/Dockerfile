@@ -5,12 +5,19 @@ LABEL description="Red team attacker container — Kali Linux base"
 
 # Install core tooling.
 #
-# Kali rolling's pool lags its index — half the time builds 404 on
-# transitive libs (libexpat1, libgomp1, libatomic1...) whose .deb has
-# already been rotated out. Configure apt retries AND retry the install
-# loop a couple of times so a flaky upstream doesn't fail the build.
-RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries && \
-    for attempt in 1 2 3; do \
+# Kali rolling's pool lags its index -- the default `http.kali.org` mirror
+# often has stale entries that 404 on transitive libs (libexpat1, libgomp1,
+# libatomic1...) for hours at a time. Switch the sources to the CDN-fronted
+# `kali.download` which stays consistent, set apt retries, AND retry the
+# install loop with longer sleeps as belt-and-suspenders. If all 3 attempts
+# fail, exit non-zero so the silent fall-through into `pip install` doesn't
+# mask the real failure with an `exec: pip3: not found` cascade.
+RUN set -e && \
+    echo 'deb http://kali.download/kali kali-rolling main contrib non-free non-free-firmware' \
+        > /etc/apt/sources.list && \
+    echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries && \
+    rc=1 ; \
+    for attempt in 1 2 3 ; do \
         apt-get update -qq && \
         apt-get install -y --no-install-recommends \
             python3 \
@@ -32,11 +39,15 @@ RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries && \
             sqlmap \
             gobuster \
             nikto \
-            && break ; \
-        echo "[apt] attempt $attempt failed, refreshing index and retrying..." >&2 ; \
+        && { rc=0 ; break ; } ; \
+        echo "[apt] attempt ${attempt} failed, refreshing index and retrying in 30s..." >&2 ; \
         rm -rf /var/lib/apt/lists/* ; \
-        sleep 5 ; \
-    done && \
+        sleep 30 ; \
+    done ; \
+    if [ "${rc}" -ne 0 ]; then \
+        echo "[apt] all 3 install attempts failed -- aborting build" >&2 ; \
+        exit 1 ; \
+    fi ; \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
