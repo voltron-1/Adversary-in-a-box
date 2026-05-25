@@ -83,15 +83,15 @@ HOST_ONLY_TECHNIQUES = {"T1098.004", "T1053.003"}
 # is rewritten to fire real-but-safe traffic (e.g. against a sinkhole
 # inside lab-net).
 SIMULATED_ONLY_TECHNIQUES = {
-    "T1041",      # https_exfil.py -- simulated HTTPS beacon
+    "T1041",  # https_exfil.py -- simulated HTTPS beacon
     "T1048.003",  # dns_tunnel.py -- "Simulate DNS query exfiltration (no actual DNS queries made)"
-    "T1110",      # brute_force.py -- simulated credential spray
-    "T1204",      # malware_drop.py -- EICAR written locally, never transferred
-    "T1486",      # ransomware_sim.py -- local file ops with "NO ACTUAL ENCRYPTION" marker
+    "T1110",  # brute_force.py -- simulated credential spray
+    "T1204",  # malware_drop.py -- EICAR written locally, never transferred
+    "T1486",  # ransomware_sim.py -- local file ops with "NO ACTUAL ENCRYPTION" marker
     "T1548.001",  # suid_hunt.py -- local SUID enumeration only
     "T1548.003",  # sudo_abuse.py -- local sudo enumeration only
     "T1550.002",  # pass_the_hash.py -- simulated SMB auth
-    "T1557",      # mitm.py -- simulated ARP spoof advisory
+    "T1557",  # mitm.py -- simulated ARP spoof advisory
     "T1566.001",  # spear_phish.py -- payload generated, SMTP send simulated
 }
 
@@ -122,9 +122,17 @@ def _es_query(query: dict) -> dict:
     try:
         proc = subprocess.run(
             [
-                "docker", "compose", "exec", "-T", "scoreboard",
-                "curl", "-sm10", "-H", "Content-Type: application/json",
-                "-d", body.decode(),
+                "docker",
+                "compose",
+                "exec",
+                "-T",
+                "scoreboard",
+                "curl",
+                "-sm10",
+                "-H",
+                "Content-Type: application/json",
+                "-d",
+                body.decode(),
                 "http://elasticsearch:9200/suricata-*/_search?size=0",
             ],
             cwd=REPO_ROOT,
@@ -182,8 +190,15 @@ class TestFullKillchain(unittest.TestCase):
         # SCAN noise from logstash<->ES probing.
         cls.killchain_proc = subprocess.run(
             [
-                "docker", "compose", "exec", "-T", "red-team",
-                "python", "runner.py", "--campaign", "full-killchain",
+                "docker",
+                "compose",
+                "exec",
+                "-T",
+                "red-team",
+                "python",
+                "runner.py",
+                "--campaign",
+                "full-killchain",
             ],
             cwd=REPO_ROOT,
             capture_output=True,
