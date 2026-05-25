@@ -98,10 +98,13 @@ class StartScriptHarness:
 
     def run(self, *args: str, **env_overrides: str) -> subprocess.CompletedProcess:
         # Patch the DEADLINE to be 8 seconds from now so the timeout
-        # test doesn't actually wait 3 minutes.
+        # test doesn't actually wait for the full real-world ceiling.
+        # Regex-based so future bumps to the production deadline (e.g.
+        # the F follow-up that went 180s -> 360s) don't break this test.
+        import re as _re
+
         script = (self.tmpdir / "scripts" / "lab" / "start.sh").read_text()
-        # Replace the 180s deadline + 3s sleep with 8s + 1s sleep.
-        script = script.replace("$(date +%s) + 180", "$(date +%s) + 8")
+        script = _re.sub(r"\$\(date \+%s\)\s*\+\s*\d+", "$(date +%s) + 8", script)
         script = script.replace("sleep 3", "sleep 1")
         (self.tmpdir / "scripts" / "lab" / "start.sh").write_text(script)
 
