@@ -243,3 +243,12 @@ evidence/*
 reports/*
 !reports/.gitkeep
 .coverage
+
+# Per-run artifacts from `runner.py` -- the red-team container writes
+# campaign_*.json here as root, which leaks into `git status` after a
+# kill-chain run.
+red-team/logs/
+
+# Claude Code per-developer settings (settings.local.json, transcripts).
+# Shared project settings belong in .claude/settings.json (not ignored).
+.claude/
