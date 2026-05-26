@@ -7,5 +7,7 @@ elasticsearch.requestTimeout: 90000
 logging.appenders.default.type: console
 logging.appenders.default.layout.type: json
 logging.root.level: warn
-xpack.security.enabled: false
+# Kibana 8.x: xpack.security.enabled was removed from kibana.yml — security
+# is driven by Elasticsearch's setting (ES has xpack.security.enabled=false
+# in docker-compose.yml, so this Kibana runs in unsecured mode for lab use).
 telemetry.enabled: false

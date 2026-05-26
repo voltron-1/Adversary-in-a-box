@@ -8,7 +8,6 @@
 set -eu
 
 LAB_SUBNET="${LAB_NET_PREFIX:-172.20.0}.0/24"
-SCRIPT_DIR="${ZEEK_SITE_DIR:-/usr/local/zeek/share/zeek/site}"
 RUNTIME_DIR="/tmp/zeek-runtime"
 LOG_DIR="${ZEEK_LOG_DIR:-/var/log/zeek}"
 
@@ -16,11 +15,15 @@ mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 
 # Materialize a per-student local.zeek under /tmp/zeek-runtime so the
 # bind-mounted source tree stays read-only and shareable across students.
+# Zeek 7's @load resolves bare names via ZEEKPATH; the bind-mounted
+# site dir (/usr/local/zeek/share/zeek/site) is already on ZEEKPATH so
+# `@load local` finds the lab's local.zeek there. Earlier versions used
+# `@load <abs>/local` which 7.0 rejects with "can't find ...".
 cat > "$RUNTIME_DIR/local.zeek" <<EOF
 # Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ) by entrypoint.sh
 # Per-student LAB_NET_PREFIX: ${LAB_SUBNET}
 
-@load ${SCRIPT_DIR}/local
+@load local
 
 redef Site::local_nets = { ${LAB_SUBNET} };
 redef LateralMovement::internal_net = ${LAB_SUBNET};

@@ -46,9 +46,12 @@ event zeek_init() {
 }
 
 event new_connection(c: connection) {
-    # Only track connections that look like scanning (no data transferred)
+    # Only track connections that look like scanning (no data transferred).
+    # Zeek 7 dropped the $unique field on SumStats::Observation -- the
+    # UNIQUE reducer counts distinct $str values, so the destination
+    # port goes there as a string.
     SumStats::observe("scan.port",
         SumStats::Key($host=c$id$orig_h),
-        SumStats::Observation($unique=cat(c$id$resp_p))
+        SumStats::Observation($str=cat(c$id$resp_p))
     );
 }
