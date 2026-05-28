@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `exfil-https` campaign (T1041) and `persistence-sshkey` campaign
+  (T1098.004) registered in `runner.py`. Same bug class as Phase A6
+  (SuidHunt) and audit-2 Gap #10 (SshHijack): `HttpsExfilCampaign` and
+  `SshKeyPlantCampaign` existed in the campaigns tree but weren't in
+  `CAMPAIGNS`, so `--technique T1041` silently fell back to
+  `DnsTunnelCampaign` and `--technique T1098.004` to
+  `CronBackdoorCampaign`. Tests added in `test_campaigns.py`.
+- `TestNoOrphanedCampaigns` regression test that walks
+  `red-team/campaigns/**` and asserts every `BaseCampaign` subclass is
+  registered in `runner.CAMPAIGNS`. Catches the orphan bug class
+  permanently.
+- `TestMitreTagger.test_every_registered_technique_has_metadata` —
+  asserts every technique in `runner.TECHNIQUE_MAP` has a
+  `TECHNIQUE_METADATA` entry so ES alerts don't ship as "Unknown
+  Technique".
+
+### Changed
+
+- `runner.py` `_run_full_killchain()` now executes all 15 registered
+  attack campaigns in MITRE tactic order (was 7 — missed the entire
+  Phase B1 set: `malware-drop`, `brute-force`, `mitm`, `privesc-suid`,
+  `lateral-ssh`, `ransomware`, plus the two newly-registered campaigns
+  above). `CAMPAIGNS["full-killchain"]["techniques"]` lists all 16
+  covered techniques.
+- `TECHNIQUE_MAP` construction now skips meta-campaigns
+  (`module: None`) so `full-killchain`'s aggregated techniques list
+  doesn't overwrite the real single-campaign mappings.
+- `mitre_tagger.TECHNIQUE_METADATA` gained 4 entries: T1204 (User
+  Execution), T1110 (Brute Force), T1557 (Adversary-in-the-Middle),
+  T1486 (Data Encrypted for Impact). Without these, Phase B1
+  campaigns' ES events were silently tagged "Unknown Technique" and
+  the Kibana threat-overview dashboard couldn't group them by tactic.
+- README MITRE ATT&CK Coverage table: added Execution (T1204),
+  Credential Access (T1110, T1557), and Impact (T1486) rows that were
+  missing despite Phase B1 shipping those campaigns in v0.2.0.
+
+### Test surface (post-sprint)
+
+- Unit suite: 122 tests (was 120 at v0.2.0 ship + 2 regression tests
+  added this sprint). Integration suite still 4 tests gated behind
+  `AIB_RUN_INTEGRATION=1`. CHANGELOG v0.2.0's "99 tests" line was
+  measured pre-Phase-F follow-ups; the v0.2.0 actual was 120.
+
+### Documentation drift fixes (v0.2.0 entries that were inaccurate)
+
+- v0.2.0 Added section said "Suricata `local.rules` with 17 rules" but
+  the file shipped with 22 (the 4 Phase B1 simulation rules + a Phase
+  B1c HTTP brute-force burst rule landed in the same release).
+- v0.2.0 CI matrix was Python 3.11/3.12/**3.14** at ship, not 3.11/3.12
+  as the CHANGELOG entry described.
+
 ## [0.2.0] — 2026-05-24
 
 Phase E + tutorial deliverables. The lab is now a self-serve teaching

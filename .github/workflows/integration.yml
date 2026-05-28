@@ -27,6 +27,21 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: "3.11"
+        cache: pip
+
+    - name: Install Python dependencies for the test harness
+      # tests/integration/test_killchain.py imports runner.py from the
+      # bare CI runner to walk TECHNIQUE_MAP for per-technique alert
+      # assertions. That requires runner's top-level imports (click,
+      # rich) to resolve outside the red-team container. Mirror the
+      # install step in validate.yml so the test harness has the same
+      # deps the unit suite already relies on.
+      run: |
+        python -m pip install --upgrade pip
+        for req in red-team/requirements.txt blue-team/requirements.txt \
+                   forensics/scoreboard/requirements.txt; do
+          if [ -f "$req" ]; then pip install -r "$req"; fi
+        done
 
     - name: Prepare .env (skip egress preflight, accept default profile)
       run: |
