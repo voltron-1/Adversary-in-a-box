@@ -112,15 +112,36 @@ CAMPAIGNS: dict[str, dict] = {
     "exfil": {
         "module": "campaigns.exfiltration.dns_tunnel",
         "class": "DnsTunnelCampaign",
-        "techniques": ["T1048.003", "T1041"],
-        "description": "Data exfiltration over DNS tunnel + HTTPS C2 channel",
+        "techniques": ["T1048.003"],
+        "description": "Data exfiltration over DNS tunnel",
+        "domain": 1,
+    },
+    # Same bug class as Phase A6 / audit-2 Gap #10: HttpsExfilCampaign
+    # existed in campaigns/exfiltration/https_exfil.py but wasn't
+    # registered, so --technique T1041 silently fell back to
+    # DnsTunnelCampaign (wrong technique).
+    "exfil-https": {
+        "module": "campaigns.exfiltration.https_exfil",
+        "class": "HttpsExfilCampaign",
+        "techniques": ["T1041"],
+        "description": "Data exfiltration over HTTPS C2 channel",
         "domain": 1,
     },
     "persistence": {
         "module": "campaigns.persistence.cron_backdoor",
         "class": "CronBackdoorCampaign",
-        "techniques": ["T1053.003", "T1098.004"],
-        "description": "Persistence via cron backdoor + SSH authorized keys",
+        "techniques": ["T1053.003"],
+        "description": "Persistence via cron backdoor",
+        "domain": 1,
+    },
+    # Same bug class as `exfil-https` above: SshKeyPlantCampaign existed
+    # in campaigns/persistence/ssh_key_plant.py but wasn't registered,
+    # so --technique T1098.004 silently fell back to CronBackdoorCampaign.
+    "persistence-sshkey": {
+        "module": "campaigns.persistence.ssh_key_plant",
+        "class": "SshKeyPlantCampaign",
+        "techniques": ["T1098.004"],
+        "description": "Persistence via planted SSH authorized_keys entry",
         "domain": 1,
     },
     # Phase B1d: ransomware simulation (T1486). Renames decoys in a
@@ -136,22 +157,42 @@ CAMPAIGNS: dict[str, dict] = {
     "full-killchain": {
         "module": None,  # Runs all campaigns in sequence
         "class": None,
+        # Ordered by MITRE tactic so the kill-chain narrative reads
+        # recon -> initial-access -> credential-access -> privesc ->
+        # lateral -> exfil -> impact -> persistence. Keep this list in
+        # sync with _run_full_killchain() below.
         "techniques": [
             "T1595",
+            "T1589",
             "T1566.001",
             "T1190",
+            "T1204",
+            "T1110",
+            "T1557",
             "T1548.003",
+            "T1548.001",
             "T1550.002",
+            "T1563.001",
             "T1048.003",
+            "T1041",
+            "T1486",
             "T1053.003",
+            "T1098.004",
         ],
-        "description": "Full kill chain: recon → initial access → privesc → lateral → exfil → persist",
+        "description": "Full kill chain across all registered MITRE techniques",
         "domain": "1-2-3",
     },
 }
 
-# Technique-to-campaign mapping
-TECHNIQUE_MAP = {tech: name for name, cfg in CAMPAIGNS.items() for tech in cfg["techniques"]}
+# Technique-to-campaign mapping. Meta-campaigns (module=None, e.g.
+# full-killchain) are excluded so their aggregated techniques list
+# doesn't overwrite the real single-campaign mappings.
+TECHNIQUE_MAP = {
+    tech: name
+    for name, cfg in CAMPAIGNS.items()
+    if cfg.get("module")
+    for tech in cfg["techniques"]
+}
 
 console = Console()
 logger = AttackLogger()
@@ -256,15 +297,28 @@ def _run_single_campaign(name, cfg, target_override=None):
 
 
 def _run_full_killchain(target_override=None):
-    """Run all campaigns in kill-chain order."""
+    """Run all campaigns in kill-chain order.
+
+    Ordered by MITRE tactic so the narrative reads recon -> initial-access ->
+    credential-access -> privesc -> lateral -> exfil -> impact -> persistence.
+    Keep this list aligned with CAMPAIGNS["full-killchain"]["techniques"].
+    """
     kill_chain = [
         "recon",
         "phishing",
         "initial-access",
+        "malware-drop",
+        "brute-force",
+        "mitm",
         "privesc",
+        "privesc-suid",
         "lateral",
+        "lateral-ssh",
         "exfil",
+        "exfil-https",
+        "ransomware",
         "persistence",
+        "persistence-sshkey",
     ]
     console.print("[bold red]⚡ Starting Full Kill Chain[/bold red]\n")
 

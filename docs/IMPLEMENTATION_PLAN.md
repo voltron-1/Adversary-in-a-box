@@ -1,16 +1,25 @@
 # Implementation Plan — Adversary-in-a-Box
 
-> **Status as of 2026-05-23, commit `0685206`:** All 6 milestones from
-> `scripts/setup/user_stories.yml` meet their ADR-0001 acceptance criteria.
-> 20 audit gaps closed across 18 atomic commits (2 audit rounds). The lab
-> builds, the IR loop closes end-to-end on Linux, and CI is wired with a
-> 51-test matrix on Python 3.11/3.12. What remains is **breadth, polish,
-> and project hygiene**, not foundational work.
+> **STATUS (2026-05-28):** Phases A–E and Phase F are complete; the
+> v0.2.0 release shipped on 2026-05-24 and the post-release sprint
+> (orphan-campaign fixes, MITRE metadata, full-killchain extension,
+> doc drift) is in `CHANGELOG.md` `## [Unreleased]`.
+>
+> **This document is now historical** — read it for the rationale
+> behind each phase and the ADR-0001 OQ resolutions, but the live
+> rolling backlog is split across two newer sources of truth:
+>
+> - `CHANGELOG.md` `## [Unreleased]` — what's landed since the last tag.
+> - `docs/TESTING_TODO.md` — items that need live-stack smoke tests
+>   before the next tag.
+>
+> When a new audit lands, add findings to one of those files rather
+> than reopening sections below.
 
-This document is the rolling backlog. Items are grouped by phase, with
-size estimates (XS≤1h, S≤1d, M=1–3d, L=3–5d) and crisp acceptance
-criteria. Re-order freely; nothing here is a strict dependency unless
-called out.
+The original phase-by-phase backlog follows for reference. Most items
+are marked closed by virtue of v0.1.0 / v0.2.0 shipping; the sections
+still describe the *intent* and acceptance criteria each phase was
+working toward.
 
 ---
 

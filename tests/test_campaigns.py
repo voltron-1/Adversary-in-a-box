@@ -360,6 +360,54 @@ class TestSuidHuntCampaign(unittest.TestCase):
         self.assertEqual(runner.TECHNIQUE_MAP.get("T1548.001"), "privesc-suid")
 
 
+class TestNoOrphanedCampaigns(unittest.TestCase):
+    """Regression test for the bug class that Phase A6, audit-2 Gap #10,
+    and this PR all closed: a Campaign subclass exists on disk but isn't
+    in runner.CAMPAIGNS, so --technique routes silently fall through to
+    the wrong campaign. Walks the campaigns/ tree, imports every module,
+    and asserts every BaseCampaign subclass is registered.
+    """
+
+    def test_every_campaign_subclass_is_registered(self):
+        import importlib
+        import inspect
+        import pkgutil
+
+        os.environ.setdefault("LOG_DIR", tempfile.gettempdir())
+        import runner
+        from campaigns.base_campaign import BaseCampaign
+        import campaigns as campaigns_pkg
+
+        registered_classes = {
+            cfg["class"] for cfg in runner.CAMPAIGNS.values() if cfg.get("class")
+        }
+
+        discovered: dict[str, str] = {}
+        for mod_info in pkgutil.walk_packages(
+            campaigns_pkg.__path__, prefix=campaigns_pkg.__name__ + "."
+        ):
+            module = importlib.import_module(mod_info.name)
+            for name, obj in inspect.getmembers(module, inspect.isclass):
+                if obj is BaseCampaign:
+                    continue
+                if not issubclass(obj, BaseCampaign):
+                    continue
+                # Only count classes DEFINED in this module, not re-exports.
+                if obj.__module__ != mod_info.name:
+                    continue
+                discovered[name] = mod_info.name
+
+        orphans = sorted(
+            f"{cls} ({mod})" for cls, mod in discovered.items() if cls not in registered_classes
+        )
+        self.assertFalse(
+            orphans,
+            "BaseCampaign subclasses exist but aren't in runner.CAMPAIGNS — "
+            "--technique calls will silently fall through to the wrong "
+            "campaign:\n  - " + "\n  - ".join(orphans),
+        )
+
+
 class TestMitreTagger(unittest.TestCase):
     """Tests for the MITRE ATT&CK tagger utility."""
 
@@ -387,6 +435,25 @@ class TestMitreTagger(unittest.TestCase):
         self.assertIn("threat", tagged)
         self.assertEqual(tagged["threat"]["technique"]["id"], "T1595")
         self.assertEqual(tagged["event.kind"], "alert")
+
+    def test_every_registered_technique_has_metadata(self):
+        # Regression test: a campaign emitting a technique without a
+        # TECHNIQUE_METADATA entry ships ES events tagged as "Unknown
+        # Technique", which silently breaks Kibana dashboards that group
+        # by threat.tactic.name. Walking runner.TECHNIQUE_MAP catches
+        # any new campaign whose technique was added without paired
+        # metadata.
+        os.environ.setdefault("LOG_DIR", tempfile.gettempdir())
+        import runner
+        from utils.mitre_tagger import TECHNIQUE_METADATA
+
+        missing = sorted(t for t in runner.TECHNIQUE_MAP if t not in TECHNIQUE_METADATA)
+        self.assertFalse(
+            missing,
+            "Techniques routed by runner.TECHNIQUE_MAP are missing from "
+            "TECHNIQUE_METADATA -- ES alerts will be tagged 'Unknown "
+            "Technique':\n  - " + "\n  - ".join(missing),
+        )
 
 
 if __name__ == "__main__":

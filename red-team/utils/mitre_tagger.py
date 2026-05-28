@@ -36,6 +36,24 @@ TECHNIQUE_METADATA = {
         "url": "https://attack.mitre.org/techniques/T1190/",
         "severity": "critical",
     },
+    "T1204": {
+        "name": "User Execution",
+        "tactic": "Execution",
+        "url": "https://attack.mitre.org/techniques/T1204/",
+        "severity": "high",
+    },
+    "T1110": {
+        "name": "Brute Force",
+        "tactic": "Credential Access",
+        "url": "https://attack.mitre.org/techniques/T1110/",
+        "severity": "high",
+    },
+    "T1557": {
+        "name": "Adversary-in-the-Middle",
+        "tactic": "Credential Access",
+        "url": "https://attack.mitre.org/techniques/T1557/",
+        "severity": "high",
+    },
     "T1548.001": {
         "name": "Setuid and Setgid",
         "tactic": "Privilege Escalation",
@@ -83,6 +101,12 @@ TECHNIQUE_METADATA = {
         "tactic": "Persistence",
         "url": "https://attack.mitre.org/techniques/T1098/004/",
         "severity": "medium",
+    },
+    "T1486": {
+        "name": "Data Encrypted for Impact",
+        "tactic": "Impact",
+        "url": "https://attack.mitre.org/techniques/T1486/",
+        "severity": "critical",
     },
 }
 

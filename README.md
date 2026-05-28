@@ -388,9 +388,12 @@ Access the scoreboard at `http://localhost:5002` after starting the lab.
 |---|---|
 | Reconnaissance | T1595, T1589 |
 | Initial Access | T1566.001, T1190 |
+| Execution | T1204 |
+| Credential Access | T1110, T1557 |
 | Privilege Escalation | T1548.001, T1548.003 |
 | Lateral Movement | T1550.002, T1563.001 |
 | Exfiltration | T1041, T1048.003 |
+| Impact | T1486 |
 | Persistence | T1053.003, T1098.004 |
 
 ---
