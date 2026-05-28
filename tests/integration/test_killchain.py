@@ -32,15 +32,6 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).parent.parent.parent
-KILLCHAIN_STAGES = [
-    "recon",
-    "phishing",
-    "initial-access",
-    "privesc",
-    "lateral",
-    "exfil",
-    "persistence",
-]
 
 
 def _docker_available() -> bool:

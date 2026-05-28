@@ -327,6 +327,64 @@ class TestMitmCampaign(unittest.TestCase):
         self.assertEqual(runner.CAMPAIGNS["mitm"]["class"], "MitmCampaign")
         self.assertEqual(runner.TECHNIQUE_MAP.get("T1557"), "mitm")
 
+    def test_mitm_emits_syslog_with_expected_markers(self):
+        # Regression test for TESTING_TODO Priority 5 (MITM Sigma
+        # logsource). Without this emission the paired Sigma rule's
+        # `logsource: syslog` never matched anything in ES even though
+        # the campaign appeared to run successfully.
+        from campaigns.credential_access.mitm import MitmCampaign
+
+        captured: list[str] = []
+
+        def fake_handler_factory(*args, **kwargs):
+            h = MagicMock()
+            # Logger.callHandlers compares record.levelno >= handler.level;
+            # a real int keeps the mock compatible with that filter.
+            h.level = 0
+            h.handle = lambda record: captured.append(record.getMessage())
+            return h
+
+        c = MitmCampaign(target="lab", logger=MagicMock(), tagger=MagicMock())
+        with patch("logging.handlers.SysLogHandler", side_effect=fake_handler_factory) as mock_cls:
+            c.run()
+
+        # Handler was constructed with the expected lab logstash address
+        # (kw-only call in mitm._emit_syslog).
+        _, kwargs = mock_cls.call_args
+        self.assertEqual(kwargs.get("address"), ("logstash", 5514))
+
+        # The Sigma rule's spoof_marker + file_target keywords must all
+        # be present in the syslog message body, otherwise it won't match
+        # in ES even after ingest.
+        self.assertEqual(len(captured), 1, "expected exactly one syslog emission")
+        msg = captured[0]
+        for marker in (
+            "arp_spoof_simulation",
+            "attacker_mac",
+            "LAB-SIMULATION: attacker",
+            "/tmp/lab_mitm.log",
+        ):
+            self.assertIn(marker, msg, f"missing Sigma-rule keyword: {marker}")
+
+        syslog_steps = [s for s in c.steps if s["step"] == "syslog_emit"]
+        self.assertEqual(len(syslog_steps), 1)
+        self.assertEqual(syslog_steps[0]["outcome"], "success")
+
+    def test_mitm_syslog_failure_is_non_fatal(self):
+        from campaigns.credential_access.mitm import MitmCampaign
+
+        c = MitmCampaign(target="lab", logger=MagicMock(), tagger=MagicMock())
+        with patch(
+            "logging.handlers.SysLogHandler",
+            side_effect=OSError("logstash unreachable"),
+        ):
+            result = c.run()
+        # Campaign still completes successfully -- syslog is best-effort.
+        self.assertTrue(result["success"])
+        warn_steps = [s for s in c.steps if s["step"] == "syslog_emit"]
+        self.assertEqual(len(warn_steps), 1)
+        self.assertEqual(warn_steps[0]["outcome"], "warning")
+
 
 class TestSuidHuntCampaign(unittest.TestCase):
     """Phase A6: cover the newly-registered SuidHunt campaign."""
