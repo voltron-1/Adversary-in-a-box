@@ -112,18 +112,12 @@ unit tests don't exercise:
       `Roll back attacker persistence` step should have
       `success: true`.
 
-- [ ] **MITM campaign signal visible in SIEM** (Phase B1a). The
-      campaign writes `/tmp/lab_mitm.log` and the Sigma rule
-      `mitm_arp_spoof.yml` keys on its content. Tests verify the
-      file gets written; nothing verifies Logstash → ES → Kibana
-      ingest of it (the file lives on red-team's filesystem, not in
-      Suricata/Zeek logs).
-      Test by: run `--campaign mitm`, then check whether a Sigma-
-      compiled rule actually fires in Kibana. If not, that's a doc
-      bug (the Sigma rule's `logsource` says `syslog` but the lab
-      doesn't ingest red-team's local /tmp into syslog).
-      *Honest assessment: this might need a follow-up commit to
-      route /tmp/lab_mitm.log through Filebeat into ES.*
+- [x] **MITM campaign signal visible in SIEM** (Phase B1a).
+      Closed 2026-05-28 by PR #116 — `mitm.py` now ships the spoof
+      advisory over UDP syslog to `logstash:5514` (in addition to
+      `/tmp/lab_mitm.log` for forensic inspection); the paired Sigma
+      rule's `logsource: syslog` matches it. Unit-tested via
+      `tests/test_campaigns.py::TestMitmCampaign::test_mitm_emits_syslog_with_expected_markers`.
 
 - [ ] **Brute force campaign threshold fires in Suricata**
       (Phase B1b). `local.rules` sid:1000090 thresholds on 5 failed
@@ -142,10 +136,14 @@ unit tests don't exercise:
 
 ## Priority 4 — Operational items the session shipped but haven't been used in anger
 
-- [ ] **Integration workflow on the live runner.** Trigger via
-      `gh workflow run integration.yml`. Watch for: full stack comes
-      up healthy in <3 min; kill-chain produces ES alerts; teardown
-      clean.
+- [x] **Integration workflow on the live runner.** Verified
+      2026-05-28 by PR #115 + #116 dispatches (runs 26606741244,
+      26606739426). Full stack healthy in ~2 min, extended 15-stage
+      kill-chain completes in ~5 min, all 4 integration tests pass.
+      Note: PR #115 also fixed a pre-existing test harness bug
+      (`import runner` failed on the bare CI runner because
+      integration.yml had no pip install step) that had been masking
+      the per-technique alert assertion since Phase F1.
 
 - [ ] **`scripts/lab/reset.sh --no-restart`** path. The default path
       restarts via `start.sh`; the `--no-restart` flag is documented
@@ -176,20 +174,21 @@ These aren't "things to test" — they're "things to decide":
       building or if the markdown `after-action-template.md` is
       enough.
 
-- [ ] **MITM Sigma rule logsource.** Per Priority 3 above, the rule
-      may not actually fire because the lab doesn't ingest
-      `/tmp/lab_mitm.log` into the SIEM. If true, either:
-      - Add a Filebeat sidecar to ship that file into ES, OR
-      - Rewrite the campaign to emit via syslog instead of a flat file.
+- [x] **MITM Sigma rule logsource.** Closed 2026-05-28 by PR #116 —
+      took the "rewrite the campaign to emit via syslog" path
+      (`mitm.py::_emit_syslog`). Filebeat sidecar route abandoned;
+      no new container needed.
 
 - [ ] **128-slot collision for >13 students** (Phase E4 known limit).
       If you teach a class larger than ~10, decide between:
       - Hand-allocating `.env` per student.
       - Building a stateful slot allocator (persisted reservations).
 
-- [ ] **`docs/IMPLEMENTATION_PLAN.md` says "256 distinct /24 pairs
-      available"** but actual is 128. Update the plan + correct the
-      audit-2 Gap #2 comment that introduced the inaccuracy.
+- [x] **`docs/IMPLEMENTATION_PLAN.md` says "256 distinct /24 pairs
+      available"** but actual is 128. Corrected in the v0.2.0
+      CHANGELOG entry (Phase E4 fix); the IMPLEMENTATION_PLAN itself
+      is now declared historical (banner updated 2026-05-28, PR #115)
+      and rolling state has moved to CHANGELOG `## [Unreleased]`.
 
 ---
 

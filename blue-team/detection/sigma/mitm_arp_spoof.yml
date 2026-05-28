@@ -5,10 +5,12 @@ description: |
     Detects the behavioral signature of an Adversary-in-the-Middle attack
     (T1557): a host advertising ownership of an IP/MAC binding that
     conflicts with the established victim address. The Adversary-in-a-Box
-    lab emits a synthetic advisory at /tmp/lab_mitm.log instead of
-    crafting real ARP frames (Docker bridges suppress them in most
-    configurations), so the rule fires on that file write plus the
-    arp_spoof_simulation event-type marker.
+    lab emits a synthetic advisory instead of crafting real ARP frames
+    (Docker bridges suppress them in most configurations). The campaign
+    (red-team/campaigns/credential_access/mitm.py) ships the advisory
+    over UDP syslog to logstash:5514 -- that's the path this rule keys
+    on. The /tmp/lab_mitm.log artifact is also written for forensic
+    inspection but is independent of the SIEM ingest path.
 references:
     - https://attack.mitre.org/techniques/T1557/
 author: Adversary-in-a-Box Lab
