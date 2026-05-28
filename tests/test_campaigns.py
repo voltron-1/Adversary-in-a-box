@@ -378,9 +378,7 @@ class TestNoOrphanedCampaigns(unittest.TestCase):
         from campaigns.base_campaign import BaseCampaign
         import campaigns as campaigns_pkg
 
-        registered_classes = {
-            cfg["class"] for cfg in runner.CAMPAIGNS.values() if cfg.get("class")
-        }
+        registered_classes = {cfg["class"] for cfg in runner.CAMPAIGNS.values() if cfg.get("class")}
 
         discovered: dict[str, str] = {}
         for mod_info in pkgutil.walk_packages(

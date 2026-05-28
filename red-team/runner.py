@@ -188,10 +188,7 @@ CAMPAIGNS: dict[str, dict] = {
 # full-killchain) are excluded so their aggregated techniques list
 # doesn't overwrite the real single-campaign mappings.
 TECHNIQUE_MAP = {
-    tech: name
-    for name, cfg in CAMPAIGNS.items()
-    if cfg.get("module")
-    for tech in cfg["techniques"]
+    tech: name for name, cfg in CAMPAIGNS.items() if cfg.get("module") for tech in cfg["techniques"]
 }
 
 console = Console()
