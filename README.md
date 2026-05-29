@@ -79,13 +79,13 @@ flowchart TB
     red -->|attacks| vmail
     vweb -->|traffic| zeek
     vweb -->|traffic| suri
-    zeek -->|JSON logs<br/>(zeek-logs vol)| ls
-    suri -->|eve.json<br/>(host bind)| ls
+    zeek -->|"JSON logs<br/>(zeek-logs vol)"| ls
+    suri -->|"eve.json<br/>(host bind)"| ls
     ls --> es
     kib --> es
     score --> es
     blue -->|/api/scores| score
-    blue -.->|docker.sock<br/>quarantine target| qhost
+    blue -.->|"docker.sock<br/>quarantine target"| qhost
     pkin --> pkic
 
     classDef vuln fill:#ffe5e5,stroke:#cc0000;
