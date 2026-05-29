@@ -4,7 +4,9 @@
 > unless noted; spot / reserved / committed-use savings noted inline
 > where they materially change the picture. Storage, bandwidth, and
 > CI numbers come from the lab's actual resource footprint as of
-> v0.2.0 (commits through tag `v0.2.0`).
+> v0.2.0 + post-release fixes (PRs #115-#117, `main` at `0e81ee6`,
+> 2026-05-29). The CI minute counts below were confirmed against
+> live workflow dispatches on those PRs, not extrapolated.
 >
 > The bottom line up front: **$0 on a beefy student laptop, ~$0 on
 > Oracle Cloud free tier, ~$2/class on AWS on-demand, ~$48/student per
@@ -51,6 +53,12 @@ sufficient, 4 vCPU comfortable.
 ES retention is the only thing that grows. With the Phase E6
 `reset.sh` wipe between class periods, cumulative growth stays
 under 1 GB even across a full semester.
+
+**Full kill-chain runtime (per session):** ~5 minutes wallclock as
+of PR #115 (15 attack stages, was 7). Confirmed against integration
+workflow run `26606741244` on a GitHub-hosted runner. Plan a 30-min
+hands-on slot per student to include startup, the kill-chain run,
+SIEM observation, and an IR-playbook fire.
 
 ---
 
@@ -192,17 +200,24 @@ already own).
 
 GitHub Actions free tier for public repos: **unlimited minutes**.
 
-If the repo went private (lab is currently public):
-- `Lab Validation` workflow: 45 seconds × 2 matrix jobs = ~1.5 min/push
-- `Integration (Full Kill Chain)` workflow: ~5 minutes per
-  workflow_dispatch + Monday cron = ~25 min/month at 1 cron + 0 manual
-- Typical month: ~50 pushes × 1.5 min + 4 cron × 5 min = **95 minutes/month**
-- Private repo free tier: 2000 minutes/month for Free plan
-- **Effective CI cost: $0/month either way**
+If the repo went private (lab is currently public), real measured
+numbers from the post-v0.2.0 release run:
 
-If CI volume grew 20x (say a contributor surge): $0.008/minute on
-Free plan overage → roughly **$15/month** if both jobs ran on every
-push to 50 PRs/day.
+- `Lab Validation` workflow: 3 matrix rows (Python 3.11 / 3.12 / 3.14).
+  Wallclock is the longest job (~2m30s on 3.11 because it runs the
+  extra pre-commit + docker-build + coverage steps; 3.12 and 3.14
+  finish in ~1m). **Billed minutes per push: ~4.5** (sum of the three
+  jobs).
+- `Integration (Full Kill Chain)` workflow: ~5m23s per dispatch,
+  confirmed against runs `26606741244` and `26606739426`. Triggered
+  on workflow_dispatch + Monday cron only; not on push.
+- Typical maintenance month: ~50 pushes × 4.5 min + 4 cron × 5.4 min =
+  **~245 minutes/month**.
+- Private repo free tier: 2,000 minutes/month for Free plan.
+- **Effective CI cost: $0/month** (still 8x under the free-tier cap).
+
+If CI volume grew 20x (contributor surge, 50 PRs/day): ~5,000
+minutes/month → 3,000 min overage × $0.008/minute → **~$24/month**.
 
 ---
 
@@ -307,6 +322,9 @@ in `CONTRIBUTING.md`).
   cost.
 
 The dominant cost is **human time**, not infrastructure. If you're
-optimizing this lab's TCO, invest in keeping `IMPLEMENTATION_PLAN.md`,
-the tutorials, and the threat model tight -- those are what compress
-maintainer and instructor time, not what makes EC2 cheaper.
+optimizing this lab's TCO, invest in keeping `CHANGELOG.md`
+`## [Unreleased]`, `docs/TESTING_TODO.md`, the tutorials, and the
+threat model tight -- those are what compress maintainer and
+instructor time, not what makes EC2 cheaper. (`IMPLEMENTATION_PLAN.md`
+is now historical as of PR #115; the live backlog has moved to the
+two files just named.)
