@@ -100,6 +100,11 @@ jobs:
             -exec bash -n {} \; -exec echo "  [ok] {}" \;
 
     - name: ShellCheck lab scripts
+      # ShellCheck is Python-agnostic, so run it once rather than on every
+      # matrix leg. The action downloads its binary from GitHub releases at
+      # runtime; running it 3x tripled exposure to transient download flakes
+      # (e.g. "tar: This does not look like a tar archive").
+      if: matrix.python-version == '3.11'
       uses: ludeeus/action-shellcheck@2.0.0
       with:
         scandir: ./scripts
