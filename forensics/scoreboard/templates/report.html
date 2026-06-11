@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>After-Action Report — Adversary-in-a-Box</title>
+    <style>
+        /* Self-contained: system font stack, no external CDN, so the report
+           renders and prints correctly offline. */
+        :root {
+            --bg: #0a0e1a; --card: #111827; --border: #1f2937;
+            --red: #ef4444; --blue: #3b82f6; --text: #e5e7eb;
+            --muted: #6b7280; --gold: #f59e0b; --green: #10b981;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg); color: var(--text); line-height: 1.5;
+        }
+        .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+        .container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+        .toolbar { display: flex; gap: .75rem; justify-content: flex-end; margin-bottom: 1.5rem; }
+        .btn {
+            background: var(--blue); color: #fff; border: none; text-decoration: none;
+            padding: .55rem 1.25rem; border-radius: 8px; cursor: pointer;
+            font-weight: 600; font-size: .9rem; display: inline-block;
+        }
+        .btn.secondary { background: var(--card); border: 1px solid var(--border); color: var(--text); }
+        .btn:hover { opacity: .88; }
+        .classification {
+            text-align: center; border: 1px solid var(--gold); color: var(--gold);
+            border-radius: 8px; padding: .5rem; font-weight: 700; letter-spacing: .05em;
+            font-size: .8rem; margin-bottom: 1.5rem;
+        }
+        h1 { font-size: 1.8rem; margin-bottom: .25rem; }
+        .subtitle { color: var(--muted); font-size: .9rem; margin-bottom: 2rem; }
+        section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        section > h2 { font-size: 1.15rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: .5rem; }
+        .scores { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .score-box { border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; text-align: center; }
+        .score-box.red { border-color: var(--red); }
+        .score-box.blue { border-color: var(--blue); }
+        .score-box .label { font-size: .85rem; color: var(--muted); }
+        .score-box .value { font-size: 2.75rem; font-weight: 700; line-height: 1; margin: .25rem 0; }
+        .score-box.red .value { color: var(--red); }
+        .score-box.blue .value { color: var(--blue); }
+        .winner { text-align: center; margin-top: 1rem; color: var(--gold); font-weight: 700; font-size: 1.1rem; }
+        .split { display: flex; gap: 1rem; margin-top: 1rem; }
+        .split > div { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: .6rem; text-align: center; }
+        .split .k { font-size: .7rem; color: var(--muted); }
+        .split .v { font-size: 1.3rem; color: var(--blue); }
+        table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+        th, td { text-align: left; padding: .5rem .4rem; border-bottom: 1px solid var(--border); }
+        th { color: var(--muted); font-weight: 600; }
+        td.pts { text-align: right; font-weight: 600; }
+        .stat-row { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+        .stat { flex: 1; min-width: 120px; border: 1px solid var(--border); border-radius: 8px; padding: .6rem .8rem; }
+        .stat .k { font-size: .72rem; color: var(--muted); }
+        .stat .v { font-size: 1.4rem; font-weight: 700; }
+        .empty { color: var(--muted); font-style: italic; }
+        .tier-Gold { color: var(--gold); }
+        .tier-Silver { color: #cbd5e1; }
+        .tier-Bronze { color: #d97706; }
+        .tier-Miss { color: var(--red); }
+        footer { color: var(--muted); font-size: .8rem; text-align: center; margin-top: 2rem; }
+
+        /* Print: white paper, hide controls, avoid splitting cards across pages. */
+        @media print {
+            body { background: #fff; color: #111; }
+            .toolbar { display: none; }
+            section { background: #fff; border: 1px solid #ccc; break-inside: avoid; }
+            .classification { color: #92400e; border-color: #92400e; }
+            .score-box .value, .winner, .split .v, .tier-Gold, .tier-Silver, .tier-Bronze, .tier-Miss { color: #111 !important; }
+            th { color: #444; }
+            a.btn { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <button class="btn" onclick="window.print()">🖨 Save as PDF</button>
+            <a class="btn secondary" href="/report?download=1">⬇ Download .html</a>
+            <a class="btn secondary" href="/">← Scoreboard</a>
+        </div>
+
+        <div class="classification">UNCLASSIFIED // FOR TRAINING USE ONLY</div>
+
+        <h1>After-Action Report</h1>
+        <div class="subtitle mono">Adversary-in-a-Box · Generated {{ now }}</div>
+
+        <!-- ── Final Scores ───────────────────────────────────────────── -->
+        <section>
+            <h2>Final Score</h2>
+            <div class="scores">
+                <div class="score-box red">
+                    <div class="label">🔴 Red Team</div>
+                    <div class="value mono">{{ report.final_scores.red_total }}</div>
+                </div>
+                <div class="score-box blue">
+                    <div class="label">🔵 Blue Team</div>
+                    <div class="value mono">{{ report.final_scores.blue_total }}</div>
+                </div>
+            </div>
+            <div class="split">
+                <div><div class="k">MTTD · Detection</div><div class="v mono">{{ report.final_scores.detection_score }}</div></div>
+                <div><div class="k">MTTA · Response</div><div class="v mono">{{ report.final_scores.response_score }}</div></div>
+            </div>
+            <div class="winner">
+                {% if report.final_scores.winner == 'red_team' %}🏆 Red Team wins
+                {% elif report.final_scores.winner == 'blue_team' %}🏆 Blue Team wins
+                {% else %}🤝 Tie{% endif %}
+            </div>
+        </section>
+
+        <!-- ── Attacks Run ────────────────────────────────────────────── -->
+        <section>
+            <h2>Attacks Run (Red Team)</h2>
+            <div class="stat-row">
+                <div class="stat"><div class="k">Campaigns completed</div><div class="v">{{ report.attacks_run.campaigns_completed }}</div></div>
+                <div class="stat"><div class="k">Undetected (stealth)</div><div class="v">{{ report.attacks_run.campaigns_undetected }}</div></div>
+                <div class="stat"><div class="k">Base points</div><div class="v">{{ report.attacks_run.base_points }}</div></div>
+                <div class="stat"><div class="k">Stealth bonus</div><div class="v">{{ report.attacks_run.stealth_bonus }}</div></div>
+            </div>
+            {% if report.attacks_run.campaign_ids %}
+            <table>
+                <thead><tr><th>#</th><th>Campaign ID</th></tr></thead>
+                <tbody>
+                    {% for cid in report.attacks_run.campaign_ids %}
+                    <tr><td>{{ loop.index }}</td><td class="mono">{{ cid }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty">No campaigns recorded yet.</p>
+            {% endif %}
+        </section>
+
+        <!-- ── Detections Made ────────────────────────────────────────── -->
+        <section>
+            <h2>Detections Made (Blue Team)</h2>
+            <div class="stat-row">
+                <div class="stat"><div class="k">False positives</div><div class="v">{{ report.detections_made.false_positives }}</div></div>
+                <div class="stat"><div class="k">Missed detections</div><div class="v">{{ report.detections_made.misses }}</div></div>
+                <div class="stat"><div class="k">Evidence bonus</div><div class="v">{{ report.detections_made.evidence_bonus }}</div></div>
+            </div>
+            {% if report.detections_made.rows %}
+            <table>
+                <thead><tr><th>Campaign</th><th>Detail</th><th>Tier</th><th class="pts">Points</th></tr></thead>
+                <tbody>
+                    {% for row in report.detections_made.rows %}
+                    <tr>
+                        <td class="mono">{{ row.event }}</td>
+                        <td>{{ row.detail }}</td>
+                        <td class="tier-{{ row.tier|default('Miss') }}">{{ row.tier|default('—') }}</td>
+                        <td class="pts">{{ row.points }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty">No detections recorded yet.</p>
+            {% endif %}
+        </section>
+
+        <!-- ── Playbooks Executed ─────────────────────────────────────── -->
+        <section>
+            <h2>Playbooks Executed (Blue Team Response)</h2>
+            <div class="stat-row">
+                <div class="stat"><div class="k">Clean-playbook bonus</div><div class="v">{{ report.playbooks_executed.playbook_bonus }}</div></div>
+            </div>
+            {% if report.playbooks_executed.rows %}
+            <table>
+                <thead><tr><th>Campaign</th><th>Detail</th><th>Tier</th><th class="pts">Points</th></tr></thead>
+                <tbody>
+                    {% for row in report.playbooks_executed.rows %}
+                    <tr>
+                        <td class="mono">{{ row.event }}</td>
+                        <td>{{ row.detail }}</td>
+                        <td class="tier-{{ row.tier|default('Miss') }}">{{ row.tier|default('—') }}</td>
+                        <td class="pts">{{ row.points }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty">No playbooks executed yet.</p>
+            {% endif %}
+        </section>
+
+        <!-- ── Manual Adjustments (only if any) ───────────────────────── -->
+        {% if report.manual_adjustments %}
+        <section>
+            <h2>Instructor Adjustments</h2>
+            <table>
+                <thead><tr><th>Event</th><th>Detail</th><th class="pts">Points</th></tr></thead>
+                <tbody>
+                    {% for row in report.manual_adjustments %}
+                    <tr>
+                        <td>{{ row.event }}</td>
+                        <td>{{ row.detail }}</td>
+                        <td class="pts">{{ row.points }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+        {% endif %}
+
+        <footer>Report generated by the Adversary-in-a-Box Lab Framework · {{ now }}</footer>
+    </div>
+</body>
+</html>

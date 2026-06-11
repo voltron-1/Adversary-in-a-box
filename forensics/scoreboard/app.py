@@ -7,7 +7,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, make_response, render_template, request
 from scorer import Scorer  # OQ-5: MTTD/MTTA tiered scoring
 
 app = Flask(__name__)
@@ -65,6 +65,33 @@ def scoreboard():
 @app.route("/api/scores")
 def api_scores():
     return jsonify(_compute_scores())
+
+
+@app.route("/report")
+def report():
+    """US-6.3: instructor after-action report.
+
+    Renders the current scores as a self-contained, print-friendly HTML
+    page (instructors Save-as-PDF from the browser). `?download=1` serves
+    the same markup as a downloadable .html attachment so it can be
+    archived without screen-scraping the dashboard.
+    """
+    scores = _compute_scores()
+    html = render_template(
+        "report.html",
+        scores=scores,
+        report=_report_context(scores),
+        now=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+    )
+    if request.args.get("download"):
+        stamp = datetime.now(UTC).strftime("%Y-%m-%d")
+        resp = make_response(html)
+        resp.headers["Content-Type"] = "text/html; charset=utf-8"
+        resp.headers["Content-Disposition"] = (
+            f'attachment; filename="after-action-report-{stamp}.html"'
+        )
+        return resp
+    return html
 
 
 @app.route("/api/award", methods=["POST"])
@@ -133,6 +160,71 @@ def _compute_scores() -> dict:  # type: ignore[no-any-unimported]
         scores["winner"] = "tie"
     scores["last_updated"] = datetime.now(UTC).isoformat()
     return scores  # type: ignore[no-any-return]
+
+
+def _classify_blue_history(history: list) -> tuple[list, list, list]:
+    """Split blue-team history rows into (detections, playbooks, manual).
+
+    The OQ-5 scorer keys every detection row's detail to MTTD (or the
+    literal "no alert" for a miss) and every response row's detail to MTTA;
+    anything else is an instructor manual-override event layered on by
+    /api/award. Pure string-prefix classification — no scoring logic here.
+    """
+    detections, playbooks, manual = [], [], []
+    for row in history:
+        detail = str(row.get("detail", ""))
+        if detail.startswith("MTTD") or detail == "no alert":
+            detections.append(row)
+        elif detail.startswith("MTTA"):
+            playbooks.append(row)
+        else:
+            manual.append(row)
+    return detections, playbooks, manual
+
+
+def _report_context(scores: dict) -> dict:
+    """Shape _compute_scores() output into the after-action report's four
+    AC sections: attacks run, detections made, playbooks executed, scores.
+
+    Pure (no Flask, no ES) so it can be unit-tested directly against a
+    scores dict.
+    """
+    red = scores.get("red_team", {})
+    blue = scores.get("blue_team", {})
+    detections, playbooks, manual = _classify_blue_history(blue.get("history", []))
+
+    # Campaign IDs surface as the `event` of each detection row (the scorer
+    # keys blue history on campaign_id). Preserve first-seen order, deduped.
+    campaign_ids = list(dict.fromkeys(r.get("event") for r in detections if r.get("event")))
+
+    return {
+        "attacks_run": {
+            "campaigns_completed": red.get("campaigns_completed", 0),
+            "campaigns_undetected": red.get("campaigns_undetected", 0),
+            "base_points": red.get("base_points", 0),
+            "stealth_bonus": red.get("stealth_bonus", 0),
+            "total": red.get("total", 0),
+            "campaign_ids": campaign_ids,
+        },
+        "detections_made": {
+            "rows": detections,
+            "false_positives": blue.get("false_positives", 0),
+            "evidence_bonus": blue.get("evidence_bonus", 0),
+            "misses": blue.get("misses", 0),
+        },
+        "playbooks_executed": {
+            "rows": playbooks,
+            "playbook_bonus": blue.get("playbook_bonus", 0),
+        },
+        "manual_adjustments": manual,
+        "final_scores": {
+            "red_total": red.get("total", 0),
+            "blue_total": blue.get("total", 0),
+            "detection_score": blue.get("detection_score", 0),
+            "response_score": blue.get("response_score", 0),
+            "winner": scores.get("winner", "tie"),
+        },
+    }
 
 
 if __name__ == "__main__":

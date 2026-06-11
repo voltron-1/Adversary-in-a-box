@@ -246,7 +246,8 @@ adversary-in-a-box/
 │   │   ├── app.py                # Scoreboard Flask app
 │   │   ├── scorer.py             # Computes red/blue team scores
 │   │   └── templates/
-│   │       └── scoreboard.html
+│   │       ├── scoreboard.html
+│   │       └── report.html       # Printable after-action report (US-6.3)
 │   └── chain_of_custody.py       # SHA-256 hashes all evidence files
 │
 ├── evidence/                     # Bind-mounted into every container as /evidence.
@@ -379,6 +380,12 @@ The forensic scoreboard awards points automatically:
 - **Blue team** — points for each attack detected, alert correlated, and playbook executed within SLA
 
 Access the scoreboard at `http://localhost:5002` after starting the lab.
+
+**After-action report (instructors).** The scoreboard's **📄 Download Report**
+button (or `http://localhost:5002/report`) renders a print-ready summary of
+attacks run, detections made, playbooks executed, and final scores. Use the
+browser's *Save as PDF*, or `…/report?download=1` for a standalone `.html`
+file — no lab login required to evaluate student performance.
 
 ---
 
