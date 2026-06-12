@@ -32,12 +32,17 @@ covers this when triggered, but confirm manually at least once:
       exposed and fixed a real G1b defect: startup-noise + in-window
       alerts were mis-counted as false positives and zeroed the blue
       score; FP is now in-exercise dead-air only.**
-- [ ] **MTTA / response score lights up after an IR playbook.** Run a
+- [x] **MTTA / response score lights up after an IR playbook.** Run a
       playbook (dashboard `POST /api/run-playbook` or the engine
       directly) with `campaign_id` in context; confirm an `ir-events-*`
       `playbook_complete` doc lands in ES and the blue `response_score`
       rises. *Why CI missed it:* `ir-events-*` was written by nothing
       until G1c.
+      **Verified 2026-06-12 via `integration.yml` (run 27405090410):
+      `test_response_score_rises_after_ir_playbook` drives `phishing_ir`
+      in the blue-team container with a detected campaign's `campaign_id`
+      and polls `/api/scores` until `response_score > 0` — green. This is
+      now a permanent integration guard alongside the detection one.**
 - [ ] **Time-window attribution holds under ingest lag.** Watch for a
       detection that arrives after the *next* campaign started (Logstash
       lag) being attributed to the wrong window. Tolerable for the
