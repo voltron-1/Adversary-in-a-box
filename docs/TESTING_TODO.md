@@ -16,7 +16,7 @@ the time-window alert correlation (G1b) can only be proven on the real
 stack. CI's `integration.yml` job (`test_scoreboard_reports_nonzero_scores`)
 covers this when triggered, but confirm manually at least once:
 
-- [ ] **Scoreboard shows non-zero scores after a kill chain.**
+- [x] **Scoreboard shows non-zero scores after a kill chain.**
       `scripts/lab/start.sh` → `docker compose exec red-team python
       runner.py --campaign full-killchain` → open `http://localhost:5002`
       (or `curl` the scoreboard's `/api/scores`). Confirm: red total > 0
@@ -25,6 +25,13 @@ covers this when triggered, but confirm manually at least once:
       real `winner` (not "tie"). *Why CI couldn't catch it before:* unit
       tests mocked the ES seam; the contract between `mitre_tagger` →
       `red-team-events-*` → `scorer` was never exercised end-to-end.
+      **Verified 2026-06-12 via `integration.yml` dispatch on
+      `fix/audit-4-scoring-loop` (run 27397719195):
+      `test_scoreboard_reports_nonzero_scores` green — red total 330
+      (15 campaigns), blue detection > 0, winner `red_team`. The run also
+      exposed and fixed a real G1b defect: startup-noise + in-window
+      alerts were mis-counted as false positives and zeroed the blue
+      score; FP is now in-exercise dead-air only.**
 - [ ] **MTTA / response score lights up after an IR playbook.** Run a
       playbook (dashboard `POST /api/run-playbook` or the engine
       directly) with `campaign_id` in context; confirm an `ir-events-*`
