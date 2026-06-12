@@ -99,7 +99,9 @@ class Scorer:
         res = self._es_search(index, body, {"hits": {"hits": []}})
         return [h.get("_source", {}) for h in res.get("hits", {}).get("hits", [])]
 
-    def _fetch(self) -> tuple[list[dict], list[dict], list[float], list[dict]]:
+    def _fetch(
+        self,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[float], list[dict[str, Any]]]:
         """One round-trip per index: (starts, ends, alert_ts_sorted, responses).
 
         audit-4 G1b: the detection join can no longer key on `campaign_id`,
@@ -120,7 +122,7 @@ class Scorer:
         return starts, ends, alert_ts, responses
 
     @staticmethod
-    def _windows(starts: list[dict]) -> list[tuple[str, float, float]]:
+    def _windows(starts: list[dict[str, Any]]) -> list[tuple[str, float, float]]:
         """Sorted (campaign_id, start_ts, next_start_ts) windows."""
         rows: list[tuple[str, float]] = []
         for s in starts:
