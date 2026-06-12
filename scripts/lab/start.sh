@@ -56,6 +56,11 @@ while :; do
     # '...'`. Escaped quotes inside an f-string expression are a
     # SyntaxError in 3.12+ -- caught by tests/test_start_script.py
     # during Phase F3.
+    #
+    # The `tr -d` below strips carriage returns so the Health/State strings
+    # compare cleanly even when start.sh is launched from a Windows shell
+    # whose python3 emits CRLF -- otherwise "healthy\r" fails the "healthy)"
+    # case and every healthy service is mis-counted as failed.
     LINES="$(printf '%s\n' "$STATUS_JSON" | python3 -c '
 import json, sys
 data = sys.stdin.read().strip()
@@ -71,7 +76,7 @@ for it in items:
     svc    = it.get("Service", "?")
     state  = it.get("State", "?")
     health = it.get("Health", "")
-    print(f"{svc}\t{state}\t{health}")')"
+    print(f"{svc}\t{state}\t{health}")' | tr -d '\r')"
 
     PENDING=0
     FAILED=0

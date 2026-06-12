@@ -68,13 +68,21 @@ bash scripts/safety/egress_test.sh --strict && docker compose up -d --build
 
 This pulls images and builds containers for:
 - Red team attacker (Kali-based)
-- Blue team dashboard (Flask)
 - Victim services (web, database, mail)
 - Suricata IDS sensor
 - ELK SIEM (Elasticsearch + Logstash + Kibana)
 - Forensic scoreboard
 
 **First build takes 5–10 minutes** as Docker pulls ~3 GB of images.
+
+> **The blue-team IR dashboard is opt-in** (audit-4 G3b). It is granted the
+> Docker socket + `NET_ADMIN`, so a bare `scripts/lab/start.sh` does **not**
+> start it. Enable it explicitly when you want incident response (and run
+> the lab on a disposable VM):
+>
+> ```bash
+> COMPOSE_PROFILES=ir scripts/lab/start.sh
+> ```
 
 ---
 
@@ -106,7 +114,7 @@ scoreboard      Up
 
 | Interface | URL | Description |
 |---|---|---|
-| Blue Team Dashboard | http://localhost:5000 | Alert triage, playbook runner |
+| Blue Team Dashboard | http://localhost:5000 | Alert triage, playbook runner — **needs `COMPOSE_PROFILES=ir`** (opt-in, see Step 3) |
 | Kibana SIEM | http://localhost:5601 | ELK dashboards and search |
 | Forensic Scoreboard | http://localhost:5002 | Red/Blue team scoring |
 
