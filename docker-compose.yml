@@ -271,7 +271,12 @@ services:
     # 'yellow' is sufficient for a single-node lab (green requires
     # replicas which don't exist on single-node).
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      # audit-4 G2a: the query string MUST be single-quoted. Unquoted, the
+      # `&` is a shell job-control operator under CMD-SHELL (sh -c): it
+      # backgrounds curl and runs `timeout=5s || exit 1` as a separate
+      # statement -- a variable assignment that always exits 0 -- so the
+      # probe reported healthy even when ES was down or curl failed.
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 18

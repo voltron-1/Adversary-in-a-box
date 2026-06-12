@@ -1,6 +1,6 @@
 # Adversary-in-a-Box Lab
 
-> A containerized red/blue team dojo for CompTIA Security+ SY0-701 — Domains 1, 2 & 3
+> Docker-based red/blue team lab for CompTIA Security+ (SY0-701): MITRE ATT&CK campaigns vs. an ELK/Zeek SIEM on an isolated network.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)](https://docs.docker.com/compose/)

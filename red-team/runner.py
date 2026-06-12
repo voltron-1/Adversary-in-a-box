@@ -267,6 +267,22 @@ def run_campaign(campaign, technique, target, dry_run):
 def _run_single_campaign(name, cfg, target_override=None):
     """Dynamically import and execute a single campaign module."""
     import importlib
+    import uuid
+
+    # audit-4 G1a: mint a per-run correlation id. Every SIEM doc this run
+    # emits (lifecycle + per-technique) carries it, so the scoreboard can
+    # join attack -> detection -> response by campaign_id and compute
+    # MTTD/MTTA. Without it the scorer's join always returned zero rows.
+    campaign_id = uuid.uuid4().hex
+    start = time.monotonic()
+
+    # campaign_start anchors MTTD; emit it before any attack action fires.
+    tagger.emit_lifecycle(
+        "campaign_start",
+        campaign_id,
+        {"campaign": name, "techniques": cfg["techniques"]},
+    )
+    logger.log_campaign_start(name, target_override or "", cfg["techniques"])
 
     try:
         module = importlib.import_module(cfg["module"])
@@ -276,21 +292,33 @@ def _run_single_campaign(name, cfg, target_override=None):
 
         console.print(f"[green]▶ Executing {cfg['class']}...[/green]")
         result = instance.run()
+        success = bool(result.get("success"))
 
-        if result.get("success"):
+        if success:
             console.print("[bold green]✓ Campaign completed successfully[/bold green]")
         else:
             console.print(
                 f"[yellow]⚠ Campaign completed with warnings: {result.get('message')}[/yellow]"
             )
 
-        # Log to SIEM
+        # Log to SIEM, tagged with the run's correlation id.
         for technique in cfg["techniques"]:
-            tagger.tag_and_emit(technique, result)
+            tagger.tag_and_emit(technique, result, campaign_id)
 
     except Exception as exc:
+        success = False
         console.print(f"[red]✗ Campaign failed: {exc}[/red]")
         logger.log_error(name, str(exc))
+    finally:
+        duration = time.monotonic() - start
+        # campaign_end feeds the campaigns-completed count + the kill-chain
+        # narrative. Emitted in finally so a crashed stage is still scored.
+        tagger.emit_lifecycle(
+            "campaign_end",
+            campaign_id,
+            {"campaign": name, "success": success, "duration_seconds": round(duration, 3)},
+        )
+        logger.log_campaign_end(name, success, duration)
 
 
 def _run_full_killchain(target_override=None):

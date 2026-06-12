@@ -138,6 +138,37 @@ def _es_query(query: dict) -> dict:
     return {}
 
 
+def _scoreboard_scores() -> dict:
+    """Fetch the scoreboard's computed scores from inside its container.
+
+    Curls the scoreboard API on its own localhost so the result doesn't
+    depend on whether :5002 is published to the test host (it isn't on
+    Docker Desktop/WSL2). Returns parsed JSON, or {} on error.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "docker",
+                "compose",
+                "exec",
+                "-T",
+                "scoreboard",
+                "curl",
+                "-sm10",
+                "http://localhost:5002/api/scores",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return json.loads(proc.stdout)
+    except Exception:
+        pass
+    return {}
+
+
 @unittest.skipUnless(
     os.environ.get("AIB_RUN_INTEGRATION") == "1",
     "Set AIB_RUN_INTEGRATION=1 to run the docker-compose-driven "
@@ -266,6 +297,103 @@ class TestFullKillchain(unittest.TestCase):
             "kill chain. Either the campaign didn't fire, the SIEM "
             "didn't ingest, or the Suricata rule keyword drifted from "
             "TECHNIQUE_KEYWORDS:\n  - " + "\n  - ".join(missing),
+        )
+
+    def test_scoreboard_reports_nonzero_scores(self) -> None:
+        # audit-4 G1e: the kill chain emits per-run campaign lifecycle +
+        # technique events (each tagged with a campaign_id), and Suricata
+        # fires on the stages that put bytes on the wire. The scoreboard
+        # joins attack -> detection by campaign-time-window, so it must
+        # report a NON-ZERO red score (campaigns_completed) AND a non-zero
+        # blue detection score (>=1 alert correlated to a campaign window).
+        #
+        # This is the assertion that fails on pre-audit-4 main: the
+        # scorer's join keys (campaign_id / event_type) were emitted by
+        # nothing, so _correlate() saw zero rows and every run scored 0-0
+        # while CI stayed green. It is the regression guard for finding C1.
+        scores = _scoreboard_scores()
+        self.assertTrue(
+            scores,
+            "could not fetch /api/scores from the scoreboard container -- "
+            "is the scoreboard service up and ES reachable?",
+        )
+        red_total = scores.get("red_team", {}).get("total", 0)
+        blue_detection = scores.get("blue_team", {}).get("detection_score", 0)
+        self.assertGreater(
+            red_total,
+            0,
+            "red team scored 0 -- campaign_start/campaign_end lifecycle "
+            f"events are not reaching red-team-events-* in ES. scores={scores}",
+        )
+        self.assertGreater(
+            blue_detection,
+            0,
+            "blue detection scored 0 -- no Suricata alert was correlated to "
+            f"any campaign time-window. scores={scores}",
+        )
+
+    def test_response_score_rises_after_ir_playbook(self) -> None:
+        # audit-4 G1c live verification: the kill-chain tests above only
+        # exercise the DETECTION (MTTD) path. Here we drive an IR playbook
+        # with a detected campaign's campaign_id threaded through context;
+        # playbook_engine must emit an `ir-events-*` `playbook_complete`
+        # doc that the scorer joins by campaign_id as the MTTA (response)
+        # signal, lifting blue `response_score` above zero. Pre-G1c the
+        # `ir-events-*` index was written by nothing, so response was 0.
+        scores = _scoreboard_scores()
+        self.assertTrue(scores, "could not fetch /api/scores from the scoreboard")
+
+        # The scorer only scores a response for a campaign that was
+        # actually detected (it needs the alert as the MTTA anchor), so
+        # attach the playbook to a real MTTD detection row's campaign_id.
+        detected = [
+            row.get("event")
+            for row in scores.get("blue_team", {}).get("history", [])
+            if str(row.get("detail", "")).startswith("MTTD") and row.get("event")
+        ]
+        self.assertTrue(
+            detected,
+            f"no detected campaign to attach a playbook response to; scores={scores}",
+        )
+        campaign_id = detected[0]
+
+        # Run a playbook inside the blue-team container (WORKDIR /app), with
+        # the campaign_id in context so the G1c emit joins by id. The engine
+        # emits the ir-event even if an individual step fails, so a halted
+        # playbook still produces the MTTA signal.
+        code = (
+            "import sys; sys.path.insert(0, 'response'); "
+            "from playbook_engine import PlaybookEngine; "
+            f"PlaybookEngine('phishing_ir').execute({{'campaign_id': {campaign_id!r}}})"
+        )
+        run = subprocess.run(
+            ["docker", "compose", "exec", "-T", "blue-team", "python", "-c", code],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(
+            run.returncode,
+            0,
+            f"playbook run failed:\nSTDOUT:\n{run.stdout}\nSTDERR:\n{run.stderr}",
+        )
+
+        # Poll the scoreboard until ES has ingested the ir-event and the
+        # scorer reflects it (ir-events are written straight to ES, so this
+        # is just the ~1s refresh plus scorer recompute).
+        response_score = 0
+        for _ in range(20):
+            response_score = _scoreboard_scores().get("blue_team", {}).get("response_score", 0)
+            if response_score > 0:
+                break
+            time.sleep(3)
+        self.assertGreater(
+            response_score,
+            0,
+            "blue response_score stayed 0 after an IR playbook ran with a "
+            f"detected campaign_id ({campaign_id}) -- the ir-events-* "
+            "playbook_complete doc didn't reach ES or didn't join by campaign_id.",
         )
 
     def test_compose_services_all_running(self) -> None:

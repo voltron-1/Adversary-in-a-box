@@ -93,66 +93,121 @@ class Scorer:
             log.warning("ES query failed (%s): %s", index, e)
             return default
 
-    def _pairs(self) -> list[tuple[str, float, float | None, float | None]]:
-        """
-        Return rows of (campaign_id, attack_ts, alert_ts | None, playbook_done_ts | None).
+    def _hits(self, index: str, query: dict[str, Any], size: int = 500) -> list[dict[str, Any]]:
+        """Return the `_source` docs for a query, sorted by @timestamp asc."""
+        body = {"query": query, "size": size, "sort": [{"@timestamp": "asc"}]}
+        res = self._es_search(index, body, {"hits": {"hits": []}})
+        return [h.get("_source", {}) for h in res.get("hits", {}).get("hits", [])]
 
-        Sourced from red-team-events-* (campaign_start/end) joined to
-        suricata-* (alert) and ir-events-* (playbook completion) by campaign_id.
-        For the lab, ELK is queried once and joined in Python; index volume is small.
-        """
-        attacks = self._es_search(
-            "red-team-events-*",
-            {
-                "query": {"match": {"event_type": "campaign_start"}},
-                "size": 200,
-                "sort": [{"@timestamp": "asc"}],
-            },
-            {"hits": {"hits": []}},
-        )["hits"]["hits"]
-        alerts = self._es_search(
-            "suricata-*",
-            {
-                "query": {"exists": {"field": "campaign_id"}},
-                "size": 500,
-                "sort": [{"@timestamp": "asc"}],
-            },
-            {"hits": {"hits": []}},
-        )["hits"]["hits"]
-        responses = self._es_search(
-            "ir-events-*",
-            {
-                "query": {"match": {"event_type": "playbook_complete"}},
-                "size": 200,
-                "sort": [{"@timestamp": "asc"}],
-            },
-            {"hits": {"hits": []}},
-        )["hits"]["hits"]
+    def _fetch(
+        self,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[float], list[dict[str, Any]]]:
+        """One round-trip per index: (starts, ends, alert_ts_sorted, responses).
 
-        alert_by_cid: dict[str, float] = {}
-        for h in alerts:
-            src = h.get("_source", {})
-            cid = src.get("campaign_id")
-            ts = _parse_ts(src.get("@timestamp"))
-            if cid and ts and cid not in alert_by_cid:
-                alert_by_cid[cid] = ts
+        audit-4 G1b: the detection join can no longer key on `campaign_id`,
+        because Suricata alerts are produced by the IDS and enriched by
+        Logstash -- neither can know the red-team's per-run id. Instead we
+        attribute each Suricata alert to the campaign whose
+        [campaign_start, next campaign_start) window it falls in. The lab
+        runs campaigns sequentially with a pause between stages, so the
+        window attribution is unambiguous. Responses (ir-events) DO carry
+        campaign_id when the caller threads it through, so those join
+        directly with a time-window fallback.
+        """
+        starts = self._hits("red-team-events-*", {"match": {"event_type": "campaign_start"}})
+        ends = self._hits("red-team-events-*", {"match": {"event_type": "campaign_end"}})
+        alerts = self._hits("suricata-*", {"match": {"event_type": "alert"}})
+        responses = self._hits("ir-events-*", {"match": {"event_type": "playbook_complete"}})
+        alert_ts = sorted(t for t in (_parse_ts(a.get("@timestamp")) for a in alerts) if t)
+        return starts, ends, alert_ts, responses
+
+    @staticmethod
+    def _windows(starts: list[dict[str, Any]]) -> list[tuple[str, float, float]]:
+        """Sorted (campaign_id, start_ts, next_start_ts) windows."""
+        rows: list[tuple[str, float]] = []
+        for s in starts:
+            cid = s.get("campaign_id")
+            ts = _parse_ts(s.get("@timestamp"))
+            if cid and ts:
+                rows.append((cid, ts))
+        rows.sort(key=lambda r: r[1])
+        out: list[tuple[str, float, float]] = []
+        for i, (cid, ts) in enumerate(rows):
+            nxt = rows[i + 1][1] if i + 1 < len(rows) else float("inf")
+            out.append((cid, ts, nxt))
+        return out
+
+    def _correlate(self) -> tuple[list[tuple[str, float, float | None, float | None]], int, int]:
+        """Return (pairs, campaigns_completed, false_positives).
+
+        pairs: (campaign_id, attack_ts, alert_ts | None, response_ts | None).
+        false_positives: Suricata alerts attributable to no campaign window
+        (e.g. pre-run startup noise) -- these deduct from the blue score.
+        """
+        starts, ends, alert_ts, responses = self._fetch()
+        windows = self._windows(starts)
 
         resp_by_cid: dict[str, float] = {}
-        for h in responses:
-            src = h.get("_source", {})
-            cid = src.get("campaign_id")
-            ts = _parse_ts(src.get("@timestamp"))
-            if cid and ts:
+        resp_rows: list[float] = []
+        for r in responses:
+            ts = _parse_ts(r.get("@timestamp"))
+            if not ts:
+                continue
+            resp_rows.append(ts)
+            cid = r.get("campaign_id")
+            if cid and cid not in resp_by_cid:
                 resp_by_cid[cid] = ts
+        resp_rows.sort()
 
+        consumed = [False] * len(alert_ts)
         pairs: list[tuple[str, float, float | None, float | None]] = []
-        for h in attacks:
-            src = h.get("_source", {})
-            cid = src.get("campaign_id")
-            ts = _parse_ts(src.get("@timestamp"))
-            if cid and ts:
-                pairs.append((cid, ts, alert_by_cid.get(cid), resp_by_cid.get(cid)))
-        return pairs
+        for cid, start, end in windows:
+            a_ts: float | None = None
+            for i, t in enumerate(alert_ts):
+                if consumed[i] or t < start:
+                    continue
+                if t >= end:
+                    break  # alert_ts is sorted; nothing past the window can match
+                a_ts = t
+                consumed[i] = True
+                break
+            # Response: prefer the campaign_id join, else first in-window response.
+            r_ts = resp_by_cid.get(cid)
+            if r_ts is None:
+                r_ts = next((t for t in resp_rows if start <= t < end), None)
+            pairs.append((cid, start, a_ts, r_ts))
+
+        # False positives: an alert that fires DURING the exercise but in
+        # inter-campaign "dead air" -- after one campaign ended, before the
+        # next began -- so it detects no campaign. audit-4 G1b, hardened
+        # after the G1e live run twice scored 0:
+        #   * Alerts already consumed as a campaign's MTTD detection are
+        #     never FPs (a port scan firing many alerts is one detection,
+        #     not N-1 false positives).
+        #   * Alerts BEFORE the first campaign started or AFTER the last one
+        #     ended are environmental stack noise (Suricata warming up, ELK
+        #     chatter), not the blue team's false detections -- the live run
+        #     charged ~7 such startup alerts as FPs, sinking 3 Gold
+        #     detections. Bound the exercise by campaign_start/_end.
+        end_by_cid: dict[str, float] = {}
+        for e in ends:
+            cid = e.get("campaign_id")
+            ts = _parse_ts(e.get("@timestamp"))
+            if cid and ts and cid not in end_by_cid:
+                end_by_cid[cid] = ts
+        # Each campaign's active interval is [start, its campaign_end];
+        # fall back to the next campaign's start if no end was emitted.
+        active = [(start, end_by_cid.get(cid, nxt)) for cid, start, nxt in windows]
+        false_positives = 0
+        if active:
+            exercise_start = min(a for a, _b in active)
+            exercise_end = max(b for _a, b in active)
+            for i, t in enumerate(alert_ts):
+                if consumed[i] or not (exercise_start <= t <= exercise_end):
+                    continue
+                if not any(a <= t <= b for a, b in active):
+                    false_positives += 1
+        return pairs, len(ends), false_positives
 
     # ------------------------------------------------------------------ scoring
     def get_blue_team_score(self) -> ScoreReport:
@@ -162,7 +217,8 @@ class Scorer:
         misses = 0
         clean_playbooks = 0
 
-        for cid, attack_ts, alert_ts, resp_ts in self._pairs():
+        pairs, _completed, fp_count = self._correlate()
+        for cid, attack_ts, alert_ts, resp_ts in pairs:
             if alert_ts is None:
                 misses += 1
                 history.append({"event": cid, "detail": "no alert", "points": 0, "tier": "Miss"})
@@ -194,8 +250,8 @@ class Scorer:
                 if rmult == 1.0:
                     clean_playbooks += 1
 
-        # False positives: alerts with no matching campaign event
-        fp_count = self._false_positive_count()
+        # False positives (alerts attributable to no campaign window) come
+        # straight from the single _correlate() pass above.
         fp_penalty = fp_count * FALSE_POSITIVE_PENALTY
         evidence_bonus = self._evidence_bonus()
         playbook_bonus = clean_playbooks * PLAYBOOK_CLEAN_BONUS
@@ -216,8 +272,8 @@ class Scorer:
         }
 
     def get_red_team_score(self) -> ScoreReport:
-        completed = self._campaigns_completed()
-        undetected = self._undetected_campaigns()
+        pairs, completed, _fp = self._correlate()
+        undetected = sum(1 for _, _, alert, _ in pairs if alert is None)
         base = completed * 10
         bonus = undetected * UNDETECTED_BONUS_RED
         return {
@@ -250,53 +306,24 @@ class Scorer:
             },
         }
 
-    # ------------------------------------------------------------------ raw counts
-    def _campaigns_completed(self) -> int:
-        try:
-            import requests
-
-            resp = requests.get(
-                f"{self.es_url}/red-team-events-*/_count",
-                json={"query": {"match": {"event_type": "campaign_end"}}},
-                timeout=5,
-            )
-            return resp.json().get("count", 0) if resp.ok else 0
-        except Exception:
-            return 0
-
-    def _undetected_campaigns(self) -> int:
-        return sum(1 for _, _, alert, _ in self._pairs() if alert is None)
-
-    def _false_positive_count(self) -> int:
-        # Alerts without a matching campaign_id are false positives.
-        try:
-            import requests
-
-            resp = requests.get(
-                f"{self.es_url}/suricata-*/_count",
-                json={
-                    "query": {
-                        "bool": {
-                            "must_not": [{"exists": {"field": "campaign_id"}}],
-                            "must": [{"match": {"event_type": "alert"}}],
-                        }
-                    }
-                },
-                timeout=5,
-            )
-            return resp.json().get("count", 0) if resp.ok else 0
-        except Exception:
-            return 0
+    # ------------------------------------------------------------------ evidence
+    # audit-4 G1d: an evidence bundle counts if it carries any recognized
+    # integrity manifest. The forensic tools produce `manifest.json`
+    # (collect_evidence.py) and `custody.json` (chain_of_custody.py); the
+    # scorer previously only looked for `manifest.sha256`, which nothing
+    # writes -- so the bonus was never awarded.
+    EVIDENCE_MANIFESTS = ("manifest.sha256", "manifest.json", "custody.json")
 
     def _evidence_bonus(self) -> int:
-        # Each evidence bundle with a verified manifest.sha256 file awards EVIDENCE_BONUS.
         evidence_root = os.environ.get("EVIDENCE_DIR", "/evidence")
         if not os.path.isdir(evidence_root):
             return 0
         n = 0
         try:
             for entry in os.scandir(evidence_root):
-                if entry.is_dir() and os.path.exists(os.path.join(entry.path, "manifest.sha256")):
+                if entry.is_dir() and any(
+                    os.path.exists(os.path.join(entry.path, m)) for m in self.EVIDENCE_MANIFESTS
+                ):
                     n += 1
         except OSError:
             return 0
