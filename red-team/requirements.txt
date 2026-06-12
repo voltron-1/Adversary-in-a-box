@@ -8,5 +8,5 @@ pyyaml==6.0.3
 click==8.4.1
 rich==15.0.0
 colorama==0.4.6
-faker==40.19.1
+faker==40.23.0
 impacket==0.13.1
