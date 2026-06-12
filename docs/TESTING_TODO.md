@@ -10,7 +10,7 @@
 
 ## Priority 0 — Verify the audit-4 scoring-loop fix on a live stack
 
-The C1 fix (`docs/audit-2026-05-31.md` Phase G1) is unit-guarded by
+The C1 fix (audit-4 Phase G1; see CHANGELOG `## [Unreleased]`) is unit-guarded by
 `tests/test_scoring_contract.py`, but the cross-container data flow and
 the time-window alert correlation (G1b) can only be proven on the real
 stack. CI's `integration.yml` job (`test_scoreboard_reports_nonzero_scores`)
