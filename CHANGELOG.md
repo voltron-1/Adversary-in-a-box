@@ -30,20 +30,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `scorer._correlate()` replaces the impossible `campaign_id`-on-alert
     join with **time-window attribution**: each Suricata alert is matched
     to the campaign whose `[campaign_start, next campaign_start)` window
-    it falls in (the lab runs campaigns sequentially). Alerts outside any
-    window are the false-positive count.
+    it falls in (the lab runs campaigns sequentially).
   - `playbook_engine` emits an `ir-events-*` `playbook_complete` doc (the
     MTTA signal), joined by `campaign_id` when threaded through context.
   - `scorer._evidence_bonus` now recognizes the manifest filenames the
     forensic tools actually produce (`manifest.json`, `custody.json`).
-  - **G1b false-positive accounting** — the live G1e kill-chain run
-    revealed the FP count included every alert the per-window MTTD loop
-    didn't consume, so a campaign that legitimately trips multiple
-    Suricata alerts (a port scan fires one per probe) had its extras
-    counted as false positives, subtracting enough to zero out an
-    otherwise-Gold blue detection score. Corrected to count only alerts
-    falling outside *every* campaign window (matching the documented
-    intent); guarded by a new `test_scoring_contract` case.
+  - **G1b false-positive accounting** — the live G1e kill-chain run scored
+    0 twice and exposed this: the FP count charged every alert the
+    per-window MTTD loop didn't consume, which swept in (a) the extra
+    alerts a single noisy campaign trips inside its own window (a port scan
+    fires one per probe) and (b) Suricata/ELK startup noise that fires
+    *before the kill chain even begins*. Either was enough to sink the
+    earned Gold detections. A false positive is now only an **unattributed
+    alert in inter-campaign dead air** — bounded by `campaign_start`/
+    `campaign_end`, so pre-/post-exercise stack noise and a campaign's own
+    extra alerts no longer penalize the blue score. Guarded by a new
+    `test_scoring_contract` dead-air case.
 - **audit-4 G2a — Elasticsearch healthcheck always reported healthy.**
   `docker-compose.yml` left the `_cluster/health` query string unquoted,
   so under `CMD-SHELL` the `&` backgrounded curl and the probe reduced to

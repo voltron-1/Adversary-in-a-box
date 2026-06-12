@@ -119,7 +119,8 @@ class TestScorerEndToEnd(unittest.TestCase):
             {"campaign_id": "B", "event_type": "campaign_end", "@timestamp": _ts(10, 10)},
         ]
         suricata = [
-            # Stray alert before any campaign window -> false positive.
+            # Alert before the first campaign starts -> pre-exercise startup
+            # noise, excluded from the false-positive count (audit-4 G1b).
             {"event_type": "alert", "@timestamp": _ts(10, 0)},
             # In A's window, 30s after start -> MTTD Gold.
             {"event_type": "alert", "@timestamp": _ts(10, 1, 30)},
@@ -152,13 +153,16 @@ class TestScorerEndToEnd(unittest.TestCase):
 
     def test_detection_and_response_tiers_are_correct(self) -> None:
         blue = self.scorer_mod.Scorer.get_blue_team_score(self._fixture())
-        # det: A Gold (10) + B Silver (6) = 16; minus 1 FP * 5 = 11.
-        self.assertEqual(blue["detection_score"], 11.0)
+        # det: A Gold (10) + B Silver (6) = 16. The 10:00 alert predates the
+        # first campaign (exercise starts 10:01), so it's startup noise, not
+        # a false positive -- no FP penalty (audit-4 G1b, post-G1e-live-run).
+        self.assertEqual(blue["detection_score"], 16.0)
         # resp: A Gold (10) + clean-playbook bonus (5) = 15.
         self.assertEqual(blue["response_score"], 15.0)
-        self.assertEqual(blue["false_positives"], 1)
+        self.assertEqual(blue["false_positives"], 0)
         self.assertEqual(blue["misses"], 0)
-        self.assertEqual(blue["total"], 13.0)
+        # total = 0.5*16 + 0.5*15 = 15.5
+        self.assertEqual(blue["total"], 15.5)
 
     def test_red_team_completion_and_stealth(self) -> None:
         red = self.scorer_mod.Scorer.get_red_team_score(self._fixture())
@@ -166,32 +170,34 @@ class TestScorerEndToEnd(unittest.TestCase):
         self.assertEqual(red["campaigns_undetected"], 0)  # both campaigns got an alert
         self.assertEqual(red["total"], 20)
 
-    def test_multiple_in_window_alerts_are_not_false_positives(self) -> None:
-        """audit-4 G1b regression (found by the G1e live run): a campaign
-        that trips several Suricata alerts inside its window must not have
-        the extras counted as false positives -- only the first is consumed
-        for MTTD, the rest are additional detections of the SAME campaign.
-        On the buggy code these three in-window alerts scored a Gold
-        detection (10) but subtracted 2*5 for the 'extra' two, plus 5 for
-        the genuine pre-window FP, zeroing the blue detection score."""
+    def test_false_positives_are_dead_air_only(self) -> None:
+        """audit-4 G1b (found by the G1e live run): a false positive is an
+        alert in inter-campaign dead air -- NOT stack-startup noise that
+        predates the kill chain, and NOT the extra alerts a single noisy
+        campaign trips inside its own window. The live run scored 0 twice
+        because ~7-10 such alerts were wrongly charged as FPs, sinking the
+        Gold detections."""
         scorer = _FakeESScorer(
             {
                 "red-team-events-*": [
                     {"campaign_id": "A", "event_type": "campaign_start", "@timestamp": _ts(10, 1)},
-                    {"campaign_id": "A", "event_type": "campaign_end", "@timestamp": _ts(10, 5)},
+                    {"campaign_id": "A", "event_type": "campaign_end", "@timestamp": _ts(10, 3)},
+                    {"campaign_id": "B", "event_type": "campaign_start", "@timestamp": _ts(10, 5)},
+                    {"campaign_id": "B", "event_type": "campaign_end", "@timestamp": _ts(10, 8)},
                 ],
                 "suricata-*": [
-                    {"event_type": "alert", "@timestamp": _ts(10, 0)},      # pre-window -> FP
-                    {"event_type": "alert", "@timestamp": _ts(10, 1, 30)},  # in window -> MTTD
-                    {"event_type": "alert", "@timestamp": _ts(10, 2)},      # in window -> NOT a FP
-                    {"event_type": "alert", "@timestamp": _ts(10, 3)},      # in window -> NOT a FP
+                    {"event_type": "alert", "@timestamp": _ts(10, 0)},      # pre-exercise noise -> NOT FP
+                    {"event_type": "alert", "@timestamp": _ts(10, 1, 30)},  # in A -> MTTD detection
+                    {"event_type": "alert", "@timestamp": _ts(10, 2)},      # extra in A -> NOT FP
+                    {"event_type": "alert", "@timestamp": _ts(10, 4)},      # dead air A..B -> FP
+                    {"event_type": "alert", "@timestamp": _ts(10, 6)},      # in B -> MTTD detection
                 ],
                 "ir-events-*": [],
             }
         )
         blue = self.scorer_mod.Scorer.get_blue_team_score(scorer)
-        self.assertEqual(blue["false_positives"], 1)  # only the 10:00 pre-window alert
-        self.assertGreater(blue["detection_score"], 0)  # Gold detection survives
+        self.assertEqual(blue["false_positives"], 1)  # only the 10:04 dead-air alert
+        self.assertGreater(blue["detection_score"], 0)  # two Gold detections survive
 
     def test_missing_join_fields_collapse_to_zero(self) -> None:
         """Documents the C1 failure mode: pre-fix docs (no campaign_id /

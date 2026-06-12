@@ -177,17 +177,36 @@ class Scorer:
                 r_ts = next((t for t in resp_rows if start <= t < end), None)
             pairs.append((cid, start, a_ts, r_ts))
 
-        # audit-4 G1b: a false positive is an alert outside EVERY campaign
-        # window (e.g. pre-run startup noise) -- NOT merely an alert the
-        # per-window MTTD loop didn't consume. A single campaign can
-        # legitimately trip many Suricata alerts (a port scan fires one per
-        # probe); only the first is consumed for MTTD, but the rest are
-        # additional detections of the SAME campaign, not false positives.
-        # The G1e live run exposed this: 3 Gold detections (30 pts) were
-        # zeroed by 10 in-window alerts mis-counted as FPs (-50).
-        false_positives = sum(
-            1 for t in alert_ts if not any(start <= t < end for _cid, start, end in windows)
-        )
+        # False positives: an alert that fires DURING the exercise but in
+        # inter-campaign "dead air" -- after one campaign ended, before the
+        # next began -- so it detects no campaign. audit-4 G1b, hardened
+        # after the G1e live run twice scored 0:
+        #   * Alerts already consumed as a campaign's MTTD detection are
+        #     never FPs (a port scan firing many alerts is one detection,
+        #     not N-1 false positives).
+        #   * Alerts BEFORE the first campaign started or AFTER the last one
+        #     ended are environmental stack noise (Suricata warming up, ELK
+        #     chatter), not the blue team's false detections -- the live run
+        #     charged ~7 such startup alerts as FPs, sinking 3 Gold
+        #     detections. Bound the exercise by campaign_start/_end.
+        end_by_cid: dict[str, float] = {}
+        for e in ends:
+            cid = e.get("campaign_id")
+            ts = _parse_ts(e.get("@timestamp"))
+            if cid and ts and cid not in end_by_cid:
+                end_by_cid[cid] = ts
+        # Each campaign's active interval is [start, its campaign_end];
+        # fall back to the next campaign's start if no end was emitted.
+        active = [(start, end_by_cid.get(cid, nxt)) for cid, start, nxt in windows]
+        false_positives = 0
+        if active:
+            exercise_start = min(a for a, _b in active)
+            exercise_end = max(b for _a, b in active)
+            for i, t in enumerate(alert_ts):
+                if consumed[i] or not (exercise_start <= t <= exercise_end):
+                    continue
+                if not any(a <= t <= b for a, b in active):
+                    false_positives += 1
         return pairs, len(ends), false_positives
 
     # ------------------------------------------------------------------ scoring
