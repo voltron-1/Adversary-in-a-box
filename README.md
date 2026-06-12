@@ -109,7 +109,7 @@ flowchart TB
 | Component | Profile | Network | Notes |
 |---|---|---|---|
 | All victims, ELK, scoreboard, Suricata, Zeek, red-team | default | `lab-net` | Always start. |
-| `blue-team` (Flask + IR scripts) | `ir` | `lab-net` + `quarantine-net` | Gated -- has `/var/run/docker.sock` (audit-2 Gap #1). Default-enabled via `COMPOSE_PROFILES=ir` in `.env.example`. |
+| `blue-team` (Flask + IR scripts) | `ir` | `lab-net` + `quarantine-net` | Gated -- has `/var/run/docker.sock` (audit-2 Gap #1). **Opt-in, off by default** (audit-4 G3b); enable with `COMPOSE_PROFILES=ir`. |
 | `pki-nginx`, `pki-ca` | `pki` | `lab-net` | Opt-in: `docker compose --profile pki up`. |
 | Quarantine target | (transient) | `quarantine-net` | A victim swapped here by `isolate_host.sh` during IR; restored by `restore_host.sh`. |
 
@@ -295,7 +295,7 @@ Security-issue reporting is in [`SECURITY.md`](SECURITY.md).
 git clone https://github.com/your-handle/adversary-in-a-box.git
 cd adversary-in-a-box
 
-# 2. Copy environment config (sets COMPOSE_PROFILES=ir by default — see warning below)
+# 2. Copy environment config (IR is opt-in / OFF by default — see security note)
 cp .env.example .env
 
 # 3. Build and start all services via the wrapper (runs the OQ-1 air-gap
@@ -305,7 +305,7 @@ scripts/lab/start.sh
 # 4. Verify all containers are healthy
 docker compose ps
 
-# 5. Open the blue team dashboard
+# 5. Open the blue team dashboard (needs the ir profile — see security note)
 open http://localhost:5000
 
 # 6. Open Kibana SIEM
@@ -315,14 +315,16 @@ open http://localhost:5601
 > **Security note — the `ir` profile.** The `blue-team` container is gated
 > behind `profiles: ["ir"]` in `docker-compose.yml` because it is granted
 > `/var/run/docker.sock` (effectively root on the host) plus `NET_ADMIN` so
-> the IR scripts (`isolate_host.sh`, `block_ip.sh`) can quarantine victims
-> and edit iptables. A web RCE in the Flask dashboard would be a single-step
-> container escape. **Run the lab on a disposable VM, never your daily
-> driver.** If you want to start the stack WITHOUT the blue-team container
-> (no IR, no host-root risk):
+> the IR scripts (`isolate_host.sh`) can quarantine victims and edit
+> iptables. A web RCE in the Flask dashboard would be a single-step
+> container escape. For that reason it is **OFF by default** (audit-4 G3b:
+> `.env.example` ships `COMPOSE_PROFILES=`), so a bare `docker compose up`
+> brings up the lab with no host-privileged container. Opt in explicitly
+> when you want incident response — and **run the lab on a disposable VM,
+> never your daily driver:**
 >
 > ```bash
-> COMPOSE_PROFILES= docker compose up -d
+> COMPOSE_PROFILES=ir scripts/lab/start.sh      # or: COMPOSE_PROFILES=ir docker compose up -d
 > ```
 
 ---

@@ -15,7 +15,13 @@ echo "  SY0-701 Domain 3 — PKI & Cryptography"
 echo "=============================================="
 
 # Create directory structure
-mkdir -p "$PKI_DIR"/{root-ca,intermediate-ca}/{certs,crl,newcerts,private}
+# POSIX sh: no brace expansion, so iterate (audit-4 G3a -- this script is
+# now run by the pki-init one-shot under alpine `sh`, not just bash).
+for _ca in root-ca intermediate-ca; do
+    for _sub in certs crl newcerts private; do
+        mkdir -p "$PKI_DIR/$_ca/$_sub"
+    done
+done
 chmod 700 "$PKI_DIR"/root-ca/private "$PKI_DIR"/intermediate-ca/private
 touch "$PKI_DIR"/root-ca/index.txt "$PKI_DIR"/intermediate-ca/index.txt
 echo 1000 > "$PKI_DIR"/root-ca/serial
@@ -32,7 +38,8 @@ chmod 400 "$PKI_DIR/root-ca/private/ca.key.pem"
 
 # Step 2: Self-sign Root CA certificate (10 years)
 echo "[+] Creating self-signed Root CA certificate..."
-openssl req -config <(cat <<EOF
+ROOT_CONF=$(mktemp)
+cat > "$ROOT_CONF" <<EOF
 [req]
 distinguished_name = dn
 x509_extensions = v3_ca
@@ -50,10 +57,11 @@ authorityKeyIdentifier = keyid:always,issuer
 basicConstraints = critical, CA:true
 keyUsage = critical, digitalSignature, cRLSign, keyCertSign
 EOF
-) \
+openssl req -config "$ROOT_CONF" \
     -key "$PKI_DIR/root-ca/private/ca.key.pem" \
     -new -x509 -days 3650 \
     -out "$PKI_DIR/root-ca/certs/ca.cert.pem"
+rm -f "$ROOT_CONF"
 
 echo "[✓] Root CA certificate created"
 
@@ -71,6 +79,14 @@ openssl req -new \
 
 # Step 5: Sign Intermediate CA with Root CA
 echo "[+] Signing Intermediate CA with Root CA..."
+INT_EXT=$(mktemp)
+cat > "$INT_EXT" <<EOF
+[v3_ca]
+basicConstraints = critical,CA:TRUE,pathlen:0
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
+keyUsage = critical, digitalSignature, cRLSign, keyCertSign
+EOF
 openssl x509 -req \
     -in "$PKI_DIR/intermediate-ca/certs/intermediate.csr.pem" \
     -CA "$PKI_DIR/root-ca/certs/ca.cert.pem" \
@@ -79,11 +95,8 @@ openssl x509 -req \
     -out "$PKI_DIR/intermediate-ca/certs/intermediate.cert.pem" \
     -days 1825 \
     -extensions v3_ca \
-    -extfile <(echo "[v3_ca]
-basicConstraints = critical,CA:TRUE,pathlen:0
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid,issuer
-keyUsage = critical, digitalSignature, cRLSign, keyCertSign")
+    -extfile "$INT_EXT"
+rm -f "$INT_EXT"
 
 # Step 6: Create certificate chain
 cat "$PKI_DIR/intermediate-ca/certs/intermediate.cert.pem" \

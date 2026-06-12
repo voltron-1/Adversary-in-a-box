@@ -53,9 +53,15 @@ jobs:
           if [ -f "$req" ]; then pip install -r "$req"; fi
         done
 
-    - name: Prepare .env (skip egress preflight, accept default profile)
+    - name: Prepare .env (skip egress preflight, enable IR profile)
       run: |
         cp .env.example .env
+        # audit-4 G3b: IR is opt-in by default now (.env.example ships
+        # COMPOSE_PROFILES= empty). The integration suite needs the blue-team
+        # IR container (test_response_score_rises_*) and the pki profile (the
+        # G3a CA-bootstrap check below). Rewrite the line deterministically --
+        # start.sh sources .env, so this must live in .env, not the job env.
+        sed -i 's/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=ir,pki/' .env
         # The runner is on the public internet -- the preflight would
         # refuse to start. Air-gap is enforced via lab-net internal:true
         # at the network layer, which still applies.
@@ -66,6 +72,34 @@ jobs:
 
     - name: Tail compose ps for diagnostics
       run: docker compose ps
+
+    - name: Verify PKI profile serves TLS (audit-4 G3a)
+      # Runs BEFORE the integration test, whose tearDownClass does
+      # `docker compose down -v` and would otherwise nuke the stack first.
+      # pki-init bootstraps the CA + stages the victim-web cert from a clean
+      # checkout, so pki-nginx serves HTTPS instead of crash-looping. Curl it
+      # from inside its own container (it has curl). Raw `docker` so lookup
+      # doesn't depend on compose profile resolution.
+      run: |
+        echo "=== pki containers ==="; docker ps -a --filter name=pki --format '{{.Names}}\t{{.Status}}'
+        NGINX=$(docker ps -a --filter name=pki-nginx --format '{{.Names}}' | head -1)
+        INIT=$(docker ps -a --filter name=pki-init --format '{{.Names}}' | head -1)
+        echo "=== pki-init log ($INIT) ===";  [ -n "$INIT" ]  && docker logs "$INIT"  2>&1 | tail -30 || echo "(no pki-init container)"
+        echo "=== pki-nginx log ($NGINX) ==="; [ -n "$NGINX" ] && docker logs "$NGINX" 2>&1 | tail -30 || echo "(no pki-nginx container)"
+        echo "=== staged certs ==="; ls -l pki-lab/certs/ || true
+        if [ -z "$NGINX" ]; then echo "::error::no pki-nginx container exists"; exit 1; fi
+        ok=
+        for i in $(seq 1 12); do
+          code=$(docker exec "$NGINX" curl -sk -o /dev/null -w '%{http_code}' https://localhost:443/ 2>/dev/null || true)
+          echo "  attempt $i: HTTP [$code]  (state: $(docker inspect -f '{{.State.Status}}' "$NGINX" 2>/dev/null))"
+          if [ -n "$code" ] && [ "$code" != "000" ]; then ok=1; break; fi
+          sleep 5
+        done
+        if [ -z "$ok" ]; then
+          echo "::error::pki-nginx did not serve TLS -- G3a cert bootstrap failed"
+          exit 1
+        fi
+        echo "[pki] pki-nginx served a TLS response (G3a verified)"
 
     - name: Run integration test
       env:
