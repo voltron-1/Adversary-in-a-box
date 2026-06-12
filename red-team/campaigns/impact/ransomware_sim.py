@@ -99,6 +99,19 @@ Or trigger the paired IR playbook from the blue-team container:
             "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("ransomware_sim_results.json", json.dumps(results, indent=2))
+        # audit-4 G2b: syslog advisory so impact_ransomware.yml (logsource:
+        # syslog) has a doc carrying the .locked/ransom-note markers + decoy
+        # path to match -- the file_event ingest path never existed.
+        self.emit_syslog_advisory(
+            {
+                "signature": "ransomware_simulation",
+                "rename_marker": self.LOCKED_EXT,
+                "ransom_note": self.NOTE_FILENAME,
+                "decoy_path": self.DECOY_DIR,
+                "technique": self.TECHNIQUE_ID,
+            },
+            program="aib-ransomware",
+        )
         return self.build_result(True, f"Ransomware simulated -- {len(renames)} files locked")
 
     def cleanup(self) -> dict:

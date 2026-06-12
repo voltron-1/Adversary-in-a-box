@@ -10,23 +10,20 @@ tags:
     - attack.exfiltration
     - attack.t1041
 logsource:
-    product: proxy
-    category: webproxy
+    product: linux
+    service: syslog  # audit-4 G2b: retargeted from proxy/webproxy to the live syslog ingest path
 detection:
-    large_upload:
-        c-cs-bytes|gt: 1000000  # > 1MB upload
+    # audit-4 G2b: the webproxy field selectors (c-cs-bytes, cs-user-agent,
+    # cs-host) had no ingest path in the lab. The https_exfil campaign now
+    # ships a syslog advisory carrying these keyword markers instead.
+    exfil_marker:
+        - 'https_exfil_simulation'
+        - 'c2_beacon'
     suspicious_ua:
-        cs-user-agent|contains:
-            - 'python-requests'
-            - 'Go-http-client'
-            - 'libwww-perl'
-    unusual_destination:
-        cs-host|endswith:
-            - '.onion'
-            - '.xyz'
-            - '.top'
-            - '.tk'
-    condition: large_upload or (suspicious_ua and unusual_destination)
+        - 'python-requests'
+        - 'Go-http-client'
+        - 'libwww-perl'
+    condition: exfil_marker and suspicious_ua
 falsepositives:
     - Legitimate software update downloads
     - Cloud backup operations

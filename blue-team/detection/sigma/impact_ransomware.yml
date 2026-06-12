@@ -18,7 +18,7 @@ tags:
     - attack.t1486
 logsource:
     product: linux
-    service: file_event
+    service: syslog  # audit-4 G2b: retargeted from file_event to the live syslog ingest path
 detection:
     rename_marker:
         - '.locked'

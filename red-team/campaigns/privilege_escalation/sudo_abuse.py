@@ -36,6 +36,19 @@ class SudoAbuseCampaign(BaseCampaign):
             "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("privesc_sudo_results.json", json.dumps(results, indent=2))
+        # audit-4 G2b: syslog advisory so privesc_sudo.yml (retargeted to
+        # logsource: syslog) has a doc carrying the sudo NOPASSWD markers --
+        # the auth-log ingest path never existed.
+        self.emit_syslog_advisory(
+            {
+                "signature": "sudo_abuse_simulation",
+                "audit": "sudo:   labuser : COMMAND=/usr/bin/find ; NOPASSWD",
+                "check": "sudo -l",
+                "paths": escalation_paths,
+                "technique": self.TECHNIQUE_ID,
+            },
+            program="aib-sudo",
+        )
         return self.build_result(True, f"{len(escalation_paths)} escalation paths found")
 
     def _enumerate_sudo(self) -> list:

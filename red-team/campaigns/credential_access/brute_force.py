@@ -90,6 +90,21 @@ class BruteForceCampaign(BaseCampaign):
             "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("brute_force_results.json", json.dumps(results, indent=2))
+        # audit-4 G2b: syslog advisory so credential_access_brute_force.yml
+        # (logsource: syslog) has a doc carrying the failed-auth + burst
+        # markers -- the webserver-access-log ingest path never existed.
+        self.emit_syslog_advisory(
+            {
+                "signature": "brute_force_simulation",
+                "request": "POST /login",
+                "status": 401,
+                "detail": "authentication failed -- Invalid credentials",
+                "params": "username=admin&password=REDACTED",
+                "attempts": len(self.WORDLIST),
+                "technique": self.TECHNIQUE_ID,
+            },
+            program="aib-brute-force",
+        )
         return self.build_result(
             len(successes) > 0,
             f"Brute force complete: {len(successes)} success(es), {failures} failure(s)",

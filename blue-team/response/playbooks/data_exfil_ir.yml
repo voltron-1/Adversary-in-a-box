@@ -14,11 +14,13 @@ steps:
     message: "Analyzing DNS logs and proxy logs for exfiltration patterns"
     required: true
 
-  - name: "Block C2 destination IPs and domains"
+  - name: "Block C2 destination IPs and domains (simulated tabletop)"
     action: run_script
     script: block_ip.sh
     args: ["{c2_ip}"]
-    required: true
+    # audit-4 G2c: block_ip.sh is a simulated control (logs the decision,
+    # does not enforce); not a hard gate. Real containment = isolate_host.
+    required: false
 
   - name: "Quantify data exfiltrated"
     action: log

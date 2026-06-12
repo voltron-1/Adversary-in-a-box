@@ -56,6 +56,19 @@ class CronBackdoorCampaign(BaseCampaign):
             "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("cron_backdoor_results.json", json.dumps(results, indent=2))
+        # audit-4 G2b: syslog advisory so persistence_cron.yml has a live
+        # doc to match -- the rule's logsource was already `syslog` but no
+        # campaign ever shipped a cron event to logstash:5514.
+        self.emit_syslog_advisory(
+            {
+                "signature": "cron_backdoor_simulation",
+                "cron_action": "crontab -e",
+                "entry": f"*/5 * * * * bash -i {script_path}",
+                "beacon_script": script_path,
+                "technique": self.TECHNIQUE_ID,
+            },
+            program="aib-cron",
+        )
         return self.build_result(True, "Cron persistence demonstrated (simulation)")
 
     def _create_beacon_script(self) -> str:

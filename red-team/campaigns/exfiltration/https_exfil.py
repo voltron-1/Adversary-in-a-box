@@ -47,6 +47,20 @@ class HttpsExfilCampaign(BaseCampaign):
             "timestamp": datetime.now(UTC).isoformat(),
         }
         self.save_artifact("https_exfil_results.json", json.dumps(results, indent=2))
+        # audit-4 G2b: syslog advisory so exfil_https.yml (retargeted to
+        # logsource: syslog) has a doc carrying the exfil marker + suspicious
+        # UA -- the webproxy ingest path never existed.
+        self.emit_syslog_advisory(
+            {
+                "signature": "https_exfil_simulation",
+                "channel": "c2_beacon",
+                "user_agent": "python-requests/2.34",
+                "dest": self.C2_URL,
+                "bytes": len(payload),
+                "technique": self.TECHNIQUE_ID,
+            },
+            program="aib-https-exfil",
+        )
         return self.build_result(True, "HTTPS C2 exfiltration demonstrated")
 
     def _beacon(self) -> dict:

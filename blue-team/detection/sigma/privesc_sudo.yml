@@ -12,7 +12,7 @@ tags:
     - attack.t1548.003
 logsource:
     product: linux
-    service: auth
+    service: syslog  # audit-4 G2b: retargeted from auth to the live syslog ingest path
 detection:
     keywords:
         - 'sudo: .*COMMAND=/usr/bin/find'

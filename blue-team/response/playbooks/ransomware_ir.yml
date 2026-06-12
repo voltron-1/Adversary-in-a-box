@@ -20,11 +20,13 @@ steps:
     args: ["{affected_host}"]
     required: true
 
-  - name: "Block C2 communication"
+  - name: "Block C2 communication (simulated tabletop)"
     action: run_script
     script: block_ip.sh
     args: ["{attacker_ip}"]
-    required: true
+    # audit-4 G2c: block_ip.sh is a simulated control (logs the decision,
+    # does not enforce); not a hard gate. Real containment = isolate_host.
+    required: false
 
   - name: "Collect forensic evidence"
     action: collect_evidence

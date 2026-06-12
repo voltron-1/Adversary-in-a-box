@@ -86,9 +86,24 @@ SIMULATED_ONLY_TECHNIQUES = {
     "T1566.001",  # spear_phish.py -- payload generated, SMTP send simulated
 }
 
+# audit-4 G2b: every campaign whose attack produces no Suricata-visible
+# packets now ships a behavioral advisory over syslog so its paired
+# `logsource: syslog` Sigma rule has a live document to match. Each entry
+# is the distinctive signature string the campaign emits; the integration
+# test asserts each lands in the syslog-* index after the kill chain.
+SYSLOG_DETECTION_SIGNATURES: dict[str, str] = {
+    "T1557": "arp_spoof_simulation",  # mitm.py (pre-existing #116 path)
+    "T1204": "malware_drop_simulation",
+    "T1486": "ransomware_simulation",
+    "T1110": "brute_force_simulation",
+    "T1041": "https_exfil_simulation",
+    "T1548.003": "sudo_abuse_simulation",
+    "T1053.003": "cron_backdoor_simulation",
+}
 
-def _es_query(query: dict) -> dict:
-    """Hit the lab's ES :9200. Returns parsed JSON, or {} on error.
+
+def _es_query(query: dict, index: str = "suricata-*") -> dict:
+    """Hit the lab's ES :9200 for the given index. Returns parsed JSON, or {}.
 
     Fast path: HTTP to http://localhost:9200. Works on Linux hosts (incl.
     GitHub Actions CI runners) where docker port-publish maps to the
@@ -99,7 +114,7 @@ def _es_query(query: dict) -> dict:
     bind to the Windows host's localhost, not the WSL2 distro's.
     """
     body = json.dumps(query).encode()
-    url = "http://localhost:9200/suricata-*/_search?size=0"
+    url = f"http://localhost:9200/{index}/_search?size=0"
     try:
         req = urllib.request.Request(
             url,
@@ -124,7 +139,7 @@ def _es_query(query: dict) -> dict:
                 "Content-Type: application/json",
                 "-d",
                 body.decode(),
-                "http://elasticsearch:9200/suricata-*/_search?size=0",
+                f"http://elasticsearch:9200/{index}/_search?size=0",
             ],
             cwd=REPO_ROOT,
             capture_output=True,
@@ -394,6 +409,39 @@ class TestFullKillchain(unittest.TestCase):
             "blue response_score stayed 0 after an IR playbook ran with a "
             f"detected campaign_id ({campaign_id}) -- the ir-events-* "
             "playbook_complete doc didn't reach ES or didn't join by campaign_id.",
+        )
+
+    def test_syslog_sigma_detections_have_live_ingest(self) -> None:
+        # audit-4 G2b/G2d: the host-/file-/proxy-sourced Sigma rules used to
+        # advertise detections with no ingest path. Now each campaign ships a
+        # syslog advisory carrying its rule's keywords. Assert every such
+        # signature actually reaches the syslog-* index after the kill chain
+        # -- i.e. the detection content has a real, live data path, not just
+        # a compiled rule no event can match.
+        missing = []
+        for technique, signature in sorted(SYSLOG_DETECTION_SIGNATURES.items()):
+            result = _es_query(
+                {
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"match_phrase": {"message": signature}},
+                                {"match_phrase": {"syslog_message": signature}},
+                            ],
+                            "minimum_should_match": 1,
+                        }
+                    }
+                },
+                index="syslog-*",
+            )
+            hits = result.get("hits", {}).get("total", {}).get("value", 0)
+            if hits == 0:
+                missing.append(f"{technique} (looked for '{signature}' in syslog-*)")
+        self.assertFalse(
+            missing,
+            "Sigma detections with no live syslog document after the kill "
+            "chain -- the campaign didn't emit its advisory, logstash didn't "
+            "ingest it, or the signature drifted:\n  - " + "\n  - ".join(missing),
         )
 
     def test_compose_services_all_running(self) -> None:

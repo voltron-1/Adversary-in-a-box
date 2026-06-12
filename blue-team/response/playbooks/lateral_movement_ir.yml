@@ -20,11 +20,13 @@ steps:
     args: ["{pivot_host}"]
     required: true
 
-  - name: "Block attacker source IP"
+  - name: "Block attacker source IP (simulated tabletop)"
     action: run_script
     script: block_ip.sh
     args: ["{attacker_ip}"]
-    required: true
+    # audit-4 G2c: block_ip.sh is a simulated control (logs the decision,
+    # does not enforce); not a hard gate. Real containment = isolate_host.
+    required: false
 
   - name: "Identify all systems accessed from pivot"
     action: log
