@@ -332,6 +332,70 @@ class TestFullKillchain(unittest.TestCase):
             f"any campaign time-window. scores={scores}",
         )
 
+    def test_response_score_rises_after_ir_playbook(self) -> None:
+        # audit-4 G1c live verification: the kill-chain tests above only
+        # exercise the DETECTION (MTTD) path. Here we drive an IR playbook
+        # with a detected campaign's campaign_id threaded through context;
+        # playbook_engine must emit an `ir-events-*` `playbook_complete`
+        # doc that the scorer joins by campaign_id as the MTTA (response)
+        # signal, lifting blue `response_score` above zero. Pre-G1c the
+        # `ir-events-*` index was written by nothing, so response was 0.
+        scores = _scoreboard_scores()
+        self.assertTrue(scores, "could not fetch /api/scores from the scoreboard")
+
+        # The scorer only scores a response for a campaign that was
+        # actually detected (it needs the alert as the MTTA anchor), so
+        # attach the playbook to a real MTTD detection row's campaign_id.
+        detected = [
+            row.get("event")
+            for row in scores.get("blue_team", {}).get("history", [])
+            if str(row.get("detail", "")).startswith("MTTD") and row.get("event")
+        ]
+        self.assertTrue(
+            detected,
+            f"no detected campaign to attach a playbook response to; scores={scores}",
+        )
+        campaign_id = detected[0]
+
+        # Run a playbook inside the blue-team container (WORKDIR /app), with
+        # the campaign_id in context so the G1c emit joins by id. The engine
+        # emits the ir-event even if an individual step fails, so a halted
+        # playbook still produces the MTTA signal.
+        code = (
+            "import sys; sys.path.insert(0, 'response'); "
+            "from playbook_engine import PlaybookEngine; "
+            f"PlaybookEngine('phishing_ir').execute({{'campaign_id': {campaign_id!r}}})"
+        )
+        run = subprocess.run(
+            ["docker", "compose", "exec", "-T", "blue-team", "python", "-c", code],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(
+            run.returncode,
+            0,
+            f"playbook run failed:\nSTDOUT:\n{run.stdout}\nSTDERR:\n{run.stderr}",
+        )
+
+        # Poll the scoreboard until ES has ingested the ir-event and the
+        # scorer reflects it (ir-events are written straight to ES, so this
+        # is just the ~1s refresh plus scorer recompute).
+        response_score = 0
+        for _ in range(20):
+            response_score = _scoreboard_scores().get("blue_team", {}).get("response_score", 0)
+            if response_score > 0:
+                break
+            time.sleep(3)
+        self.assertGreater(
+            response_score,
+            0,
+            "blue response_score stayed 0 after an IR playbook ran with a "
+            f"detected campaign_id ({campaign_id}) -- the ir-events-* "
+            "playbook_complete doc didn't reach ES or didn't join by campaign_id.",
+        )
+
     def test_compose_services_all_running(self) -> None:
         # Sanity check the stack -- start.sh already polled to healthy
         # but this records the per-service state in the test output.
