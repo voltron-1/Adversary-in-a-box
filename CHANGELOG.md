@@ -138,8 +138,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/integration/test_killchain.py::test_scoreboard_reports_nonzero_scores`
   — live G1e assertion: after a full kill chain the scoreboard reports a
   non-zero red total and non-zero blue detection score.
-- `docs/audit-2026-05-31.md` — the audit-4 findings + phased (G1–G4)
-  remediation plan.
+- **Audit-4 (Phase G) is complete.** The G1–G4 findings + remediation —
+  scoring loop (G1), ES healthcheck (G2a), detection/response credibility
+  (G2b–d), the correctness/honesty sweep (G3), and hygiene + doc-freshness
+  (G4) — all landed and were live-verified via the `integration.yml`
+  kill-chain job. The working plan doc `docs/audit-2026-05-31.md` has been
+  removed now that its items are folded into the entries here.
 - `exfil-https` campaign (T1041) and `persistence-sshkey` campaign
   (T1098.004) registered in `runner.py`. Same bug class as Phase A6
   (SuidHunt) and audit-2 Gap #10 (SshHijack): `HttpsExfilCampaign` and
