@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- All three shipped Kibana dashboards were broken against the lab's Kibana
+  8.13 and could never be imported (caught by the new dashboard-import
+  check): `operator-view.ndjson` declared a future
+  `typeMigrationVersion:10.2.0` (HTTP 422); `network-traffic.ndjson` and
+  `threat-overview.ndjson` shipped as the saved-objects export wrapper
+  instead of NDJSON. Fixed and now verified importing live.
+
 ### Added
 
 - Integration coverage for two previously manual-only smoke tests:

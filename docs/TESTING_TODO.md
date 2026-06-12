@@ -75,13 +75,16 @@ manual verification:
       confirmed all 10 services healthy.**
 
 - [x] **Operator View Kibana dashboard import** (Phase E1).
-      **Verified 2026-06-12 — `integration.yml` now has a "Verify Kibana
-      dashboard import" step that POSTs every `siem/kibana/dashboards/*.ndjson`
-      (operator-view, threat-overview, network-traffic) to the live Kibana
-      8.13 `saved_objects/_import` API and asserts `"success":true`. Proves
-      the NDJSON are valid, importable saved objects, not just static JSON.
-      (Panels rendering *with data* is implied — the kill chain populates ES
-      first; a deeper per-panel data assertion is still a manual nicety.)**
+      **Verified 2026-06-12 — `integration.yml`'s "Verify Kibana dashboard
+      import" step POSTs every `siem/kibana/dashboards/*.ndjson` to the live
+      Kibana 8.13 `saved_objects/_import` API and asserts `"success":true`.
+      The step immediately caught that ALL THREE shipped dashboards were
+      broken against Kibana 8.13 (operator-view declared a future
+      `typeMigrationVersion:10.2.0` → 422; network-traffic/threat-overview
+      shipped as the export-wrapper format, not NDJSON) — all fixed, all now
+      import (operator-view 5 objects, the others 1 each). Panels rendering
+      *with data* is implied (the kill chain populates ES first); a per-panel
+      data assertion remains a manual nicety.**
 
 - [ ] **`scripts/lab/reset.sh` end-to-end** (Phase E6). Run after a
       kill-chain. Confirm: `runner.py --cleanup-all` runs without
