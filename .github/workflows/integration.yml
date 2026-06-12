@@ -6,6 +6,16 @@ name: Integration (Full Kill Chain)
 #   * ELK eats most of the runner's 7GB
 # So it would dominate the PR feedback loop if it ran on every push.
 #
+# audit-4 G2d: this job is the lab's correctness gate -- it asserts the
+# OUTPUT contracts that unit tests structurally can't reach, because the
+# seam is the cross-container data flow:
+#   1. Scoring works     -- scoreboard reports non-zero red + blue
+#      detection scores after the kill chain (G1e).
+#   2. Response works     -- an IR playbook lifts blue response_score (G1c).
+#   3. Detections fire    -- every shipped Sigma rule has a live ingest
+#      path: its campaign's syslog advisory reaches the syslog-* index,
+#      and Suricata covers each network-visible technique (G2b/F1).
+#
 # Trigger manually from the GitHub Actions UI, or via:
 #   gh workflow run integration.yml
 on:

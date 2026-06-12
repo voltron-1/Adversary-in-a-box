@@ -5,8 +5,12 @@ All campaign modules must inherit from BaseCampaign and implement the `run()` me
 """
 
 import abc
+import json
+import logging
+import logging.handlers
 import os
 import shutil
+import socket
 import time
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -127,6 +131,41 @@ class BaseCampaign(abc.ABC):
     def simulate_delay(self, seconds: float = 1.0) -> None:
         """Add realistic timing between attack steps."""
         time.sleep(seconds)
+
+    # ------------------------------------------------------------------ SIEM
+    def emit_syslog_advisory(self, event: dict[str, Any], program: str = "aib-campaign") -> None:
+        """Ship a behavioral advisory to the lab's logstash syslog input
+        (UDP, default logstash:5514) so the campaign's paired
+        `logsource: syslog` Sigma rule has a live document to match in ES.
+
+        audit-4 G2b: most lab campaigns simulate the attack without putting
+        matching packets on the wire, so Suricata can't see them and the
+        host-/proxy-/file-event-sourced Sigma rules had no ingest path. This
+        generalizes the #116 MITM pattern: the campaign emits a JSON advisory
+        carrying the rule's detection keywords over syslog. Non-fatal -- the
+        campaign still completes if logstash is down.
+        """
+        host = os.environ.get("SIEM_SYSLOG_HOST", "logstash")
+        port = int(os.environ.get("SIEM_SYSLOG_PORT", "5514"))
+        # Per-technique logger so concurrent campaigns don't share handlers;
+        # strip any handler left from a previous run in the same process.
+        syslog_logger = logging.getLogger(f"aib.syslog.{self.TECHNIQUE_ID}")
+        for handler in list(syslog_logger.handlers):
+            syslog_logger.removeHandler(handler)
+        try:
+            handler = logging.handlers.SysLogHandler(
+                address=(host, port), socktype=socket.SOCK_DGRAM
+            )
+            handler.setFormatter(logging.Formatter(f"{program}: %(message)s"))
+            syslog_logger.addHandler(handler)
+            syslog_logger.setLevel(logging.WARNING)
+            syslog_logger.warning(json.dumps(event))
+            handler.flush()
+            handler.close()
+            syslog_logger.removeHandler(handler)
+            self.log_step("syslog_emit", f"Shipped {program} advisory to {host}:{port}")
+        except Exception as exc:  # noqa: BLE001 -- SIEM emission is best-effort
+            self.log_step("syslog_emit", f"syslog emission failed: {exc}", "warning")
 
     # ------------------------------------------------------------------ cleanup
     def register_cleanup_path(self, path: str) -> None:

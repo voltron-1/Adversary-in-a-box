@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- audit-4 G2b: every campaign whose attack produces no Suricata-visible
+  packets now ships a behavioral advisory over syslog (`logstash:5514`) via
+  a shared `BaseCampaign.emit_syslog_advisory()` helper, so its paired
+  Sigma rule has a live document to match. Generalizes the #116 MITM
+  pattern to malware-drop, ransomware, brute-force, https-exfil, sudo, and
+  cron. The 6 affected rules are retargeted to `logsource: syslog` (they
+  previously sourced from webserver/webproxy/file_event/auth — indices the
+  lab ships nothing to). New `tests/test_detection_ingest.py` asserts every
+  rule maps to a live Logstash input, and the integration suite now asserts
+  each advisory reaches the `syslog-*` index after a kill chain (G2d).
+- audit-4 G2d: `integration.yml` header documents the three output
+  contracts the job gates — scoring works, response works, detections fire.
 - audit-4 G3c: `tests/test_doc_freshness.py` gained `TestMitreMapFreshness`,
   which parses the `docs/mitre-attack-map.md` Coverage Matrix and asserts
   it equals `runner.TECHNIQUE_MAP` — the map can no longer drift from the
@@ -19,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- audit-4 G2c: `block_ip.sh` is relabeled as an explicit **simulated
+  tabletop** control. It ran `iptables` inside the blue-team network
+  namespace, which attacker→victim traffic never transits, so the "block"
+  was a logged no-op. It now records the block decision and points to
+  `isolate_host.sh` for real docker-network containment; the four IR
+  playbooks mark the step `(simulated tabletop)` and non-gating, and the
+  README reflects the split.
 - audit-4 G3c: regenerated `docs/mitre-attack-map.md` to match
   `runner.CAMPAIGNS`. It had omitted 4 techniques (T1204, T1557, T1110,
   T1486) and mis-attributed 4 to the wrong campaign — e.g. it told

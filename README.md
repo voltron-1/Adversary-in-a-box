@@ -196,7 +196,7 @@ adversary-in-a-box/
 │   │   │   ├── lateral_movement_ir.yml
 │   │   │   └── data_exfil_ir.yml
 │   │   └── actions/
-│   │       ├── block_ip.sh       # Firewall block via iptables
+│   │       ├── block_ip.sh       # Simulated tabletop block (logs decision; isolate_host enforces)
 │   │       ├── isolate_host.sh   # Network isolation script
 │   │       └── collect_evidence.py  # Forensic artifact collector
 │   │
@@ -373,7 +373,8 @@ Each campaign logs structured events to the SIEM automatically. The blue team da
 |---|---|---|
 | 3.1 Build a CA | Issue root + intermediate certs | `pki-lab` |
 | 3.2 TLS hardening | Enforce TLS 1.3, disable RC4/3DES | `tls_hardening` |
-| 3.3 Firewall rules | Block attack traffic with iptables | `block_ip.sh` |
+| 3.3 Host containment | Quarantine a compromised host (real enforcement) | `isolate_host.sh` |
+| 3.3a Firewall block (tabletop) | Record an IP-block decision — simulated, see note | `block_ip.sh` |
 | 3.4 Evidence integrity | Hash artifacts with SHA-256 | `chain_of_custody.py` |
 
 ### Domains 4 & 5 — Program Management · Governance, Risk & Compliance
