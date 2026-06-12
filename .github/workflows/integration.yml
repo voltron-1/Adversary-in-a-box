@@ -91,16 +91,19 @@ jobs:
       # (same path the integration tests use for ES/scoreboard), which
       # avoids host port-publish quirks. Any HTTP status proves TLS loaded.
       run: |
-        echo "[pki] pki-init log:";   docker compose logs pki-init  2>&1 | tail -25 || true
-        echo "[pki] pki-nginx log:";  docker compose logs pki-nginx 2>&1 | tail -25 || true
-        echo "[pki] staged certs:";   ls -l pki-lab/certs/ || true
+        # Use raw `docker` (not `docker compose`) so container lookup doesn't
+        # depend on compose profile/project resolution.
+        echo "=== pki containers ==="; docker ps -a --filter name=pki --format '{{.Names}}\t{{.Status}}'
+        NGINX=$(docker ps -a --filter name=pki-nginx --format '{{.Names}}' | head -1)
+        INIT=$(docker ps -a --filter name=pki-init --format '{{.Names}}' | head -1)
+        echo "=== pki-init log ($INIT) ===";  [ -n "$INIT" ]  && docker logs "$INIT"  2>&1 | tail -30 || echo "(no pki-init container)"
+        echo "=== pki-nginx log ($NGINX) ==="; [ -n "$NGINX" ] && docker logs "$NGINX" 2>&1 | tail -30 || echo "(no pki-nginx container)"
+        echo "=== staged certs ==="; ls -l pki-lab/certs/ || true
+        if [ -z "$NGINX" ]; then echo "::error::no pki-nginx container exists"; exit 1; fi
         ok=
         for i in $(seq 1 12); do
-          # Curl pki-nginx from inside itself (it has curl from its
-          # Dockerfile) -- the most direct proof nginx is serving TLS.
-          code=$(docker compose exec -T pki-nginx \
-                   curl -sk -o /dev/null -w '%{http_code}' https://localhost:443/ 2>/dev/null || true)
-          echo "  attempt $i: HTTP $code"
+          code=$(docker exec "$NGINX" curl -sk -o /dev/null -w '%{http_code}' https://localhost:443/ 2>/dev/null || true)
+          echo "  attempt $i: HTTP [$code]  (container: $(docker inspect -f '{{.State.Status}}' "$NGINX" 2>/dev/null))"
           if [ -n "$code" ] && [ "$code" != "000" ]; then ok=1; break; fi
           sleep 5
         done
