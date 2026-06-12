@@ -444,6 +444,57 @@ class TestFullKillchain(unittest.TestCase):
             "ingest it, or the signature drifted:\n  - " + "\n  - ".join(missing),
         )
 
+    def test_ransomware_ir_cleanup_persistence_rolls_back_red_team(self) -> None:
+        # audit-2 Gap #4 / Phase B1d live verification. The ransomware
+        # campaign (run in the kill chain) leaves /tmp/ransom-decoys in the
+        # red-team container. ransomware_ir.yml's final `cleanup_persistence`
+        # step is the only IR action that does a docker-exec round-trip from
+        # the blue-team container back into red-team (runner.py --cleanup-all)
+        # -- unit tests mock that subprocess. Drive it for real and assert
+        # the decoys get rolled back. We invoke the engine's cleanup action
+        # directly rather than the whole playbook, because ransomware_ir's
+        # required `isolate_host` step would quarantine a live victim
+        # mid-suite.
+        decoy = "/tmp/ransom-decoys"
+
+        def _decoy_exists() -> bool:
+            return (
+                subprocess.run(
+                    ["docker", "compose", "exec", "-T", "red-team", "test", "-d", decoy],
+                    cwd=REPO_ROOT,
+                    capture_output=True,
+                    timeout=30,
+                ).returncode
+                == 0
+            )
+
+        if not _decoy_exists():
+            self.skipTest(f"{decoy} not present in red-team; ransomware stage may not have run")
+
+        code = (
+            "import sys; sys.path.insert(0, 'response'); "
+            "from playbook_engine import PlaybookEngine; "
+            "r = PlaybookEngine('ransomware_ir')._cleanup_persistence({'service': 'red-team'}, {}); "
+            "print('CLEANUP_OK' if r.get('success') else 'CLEANUP_FAIL', r.get('returncode'))"
+        )
+        run = subprocess.run(
+            ["docker", "compose", "exec", "-T", "blue-team", "python", "-c", code],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertIn(
+            "CLEANUP_OK",
+            run.stdout,
+            "ransomware_ir cleanup_persistence round-trip (blue-team -> red-team) "
+            f"failed:\nSTDOUT:\n{run.stdout}\nSTDERR:\n{run.stderr}",
+        )
+        self.assertFalse(
+            _decoy_exists(),
+            f"{decoy} still present in red-team after cleanup_persistence ran",
+        )
+
     def test_compose_services_all_running(self) -> None:
         # Sanity check the stack -- start.sh already polled to healthy
         # but this records the per-service state in the test output.

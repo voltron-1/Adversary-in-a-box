@@ -7,8 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- All three shipped Kibana dashboards were broken against the lab's Kibana
+  8.13 and could never be imported (caught by the new dashboard-import
+  check): `operator-view.ndjson` declared a future
+  `typeMigrationVersion:10.2.0` (HTTP 422); `network-traffic.ndjson` and
+  `threat-overview.ndjson` shipped as the saved-objects export wrapper
+  instead of NDJSON. Fixed and now verified importing live.
+
 ### Added
 
+- Integration coverage for two previously manual-only smoke tests:
+  `test_ransomware_ir_cleanup_persistence_rolls_back_red_team` drives
+  `ransomware_ir`'s `cleanup_persistence` action (the blue-team → red-team
+  `runner.py --cleanup-all` docker-exec round-trip, audit-2 Gap #4) and
+  asserts `/tmp/ransom-decoys` is rolled back; and a `integration.yml` step
+  imports every `siem/kibana/dashboards/*.ndjson` into the live Kibana 8.13
+  `saved_objects` API and asserts success (Phase E1).
 - audit-4 G3a: a one-shot `pki-init` compose service bootstraps the lab CA
   and stages the victim-web cert so `docker compose --profile pki up`
   serves `https://localhost:8443/` from a clean checkout (no manual
