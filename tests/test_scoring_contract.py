@@ -186,11 +186,14 @@ class TestScorerEndToEnd(unittest.TestCase):
                     {"campaign_id": "B", "event_type": "campaign_end", "@timestamp": _ts(10, 8)},
                 ],
                 "suricata-*": [
-                    {"event_type": "alert", "@timestamp": _ts(10, 0)},      # pre-exercise noise -> NOT FP
+                    {
+                        "event_type": "alert",
+                        "@timestamp": _ts(10, 0),
+                    },  # pre-exercise noise -> NOT FP
                     {"event_type": "alert", "@timestamp": _ts(10, 1, 30)},  # in A -> MTTD detection
-                    {"event_type": "alert", "@timestamp": _ts(10, 2)},      # extra in A -> NOT FP
-                    {"event_type": "alert", "@timestamp": _ts(10, 4)},      # dead air A..B -> FP
-                    {"event_type": "alert", "@timestamp": _ts(10, 6)},      # in B -> MTTD detection
+                    {"event_type": "alert", "@timestamp": _ts(10, 2)},  # extra in A -> NOT FP
+                    {"event_type": "alert", "@timestamp": _ts(10, 4)},  # dead air A..B -> FP
+                    {"event_type": "alert", "@timestamp": _ts(10, 6)},  # in B -> MTTD detection
                 ],
                 "ir-events-*": [],
             }
