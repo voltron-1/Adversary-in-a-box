@@ -4,7 +4,10 @@
 > Each item lists what to run, what to look for, and why CI couldn't
 > catch it. Tag each with the date you verified it and your name.
 >
-> Updated: 2026-05-24, post-Dependabot triage cycle.
+> Updated: 2026-06-12 — audit-4 (Phase G) closeout. Many items below are
+> now permanently guarded by the `integration.yml` kill-chain job (7 tests:
+> scoring, response/MTTA, syslog Sigma detections, pki TLS), so they no
+> longer need a one-off manual run — checked off with the verifying run.
 
 ---
 
@@ -47,6 +50,10 @@ covers this when triggered, but confirm manually at least once:
       detection that arrives after the *next* campaign started (Logstash
       lag) being attributed to the wrong window. Tolerable for the
       detection bonus, but note if MTTD looks implausibly large.
+      *Partial: the happy-path time-window correlation is verified
+      (`test_scoreboard_reports_nonzero_scores` green — alerts attribute
+      to the right campaigns with sane MTTD). Only the adversarial
+      ingest-lag edge case remains unobserved.*
 
 ## Priority 1 — Verify the Dependabot-merged stack actually runs
 
@@ -55,12 +62,17 @@ python:3.14-slim) all merged on CI-green-only basis. CI runs unit
 tests on a bare runner; it does NOT spin up the lab containers. Need
 manual verification:
 
-- [ ] **Full kill chain on the new stack.** `scripts/lab/start.sh`
+- [x] **Full kill chain on the new stack.** `scripts/lab/start.sh`
       then `docker compose exec red-team python runner.py --campaign
       full-killchain`. Look for: every stage produces a SIEM alert,
       no `ModuleNotFoundError` in any container, scoreboard updates.
       *Why CI missed it:* validate.yml workflow tests imports, not
       live container behavior.
+      **Verified 2026-06-12 — `integration.yml` runs `full-killchain` on
+      the dependency-bumped stack on every dispatch (run 27433489078, all
+      7 tests green); 15 campaigns complete, per-technique alerts fire, no
+      module errors. Also brought the full default stack up locally and
+      confirmed all 10 services healthy.**
 
 - [ ] **Operator View Kibana dashboard import** (Phase E1). Curl-
       import `siem/kibana/dashboards/operator-view.ndjson` to a live
@@ -75,14 +87,17 @@ manual verification:
       `README.md` survive the wipe, lab is back up healthy.
       *Why CI missed it:* requires a live lab + Docker daemon.
 
-- [ ] **PKI profile end-to-end.** `docker compose --profile pki up
-      -d pki-ca` → `setup_ca.sh` → `issue_cert.sh victim-web.lab.local`
-      → copy certs into `pki-lab/certs/` → `docker compose --profile
-      pki up -d pki-nginx` → curl `https://localhost:8443/`. Verify
-      the cert-missing entrypoint guard (Phase E1 audit-2 Gap #6)
-      fires correctly if you skip the cert-copy step.
-      *Why CI missed it:* PKI profile tests live in `test_pki.py` but
-      only validate file existence + script content, not the runtime
+- [x] **PKI profile end-to-end.** *(audit-4 G3a automated the manual
+      cert flow: a one-shot `pki-init` service bootstraps the CA + stages
+      the certs, so `docker compose --profile pki up` serves TLS from a
+      clean checkout. The cert-missing entrypoint guard remains as the
+      fallback.)*
+      **Verified 2026-06-12 — `integration.yml` brings up the pki profile
+      and asserts `pki-nginx` serves TLS (run 27433489078: `pki-init`
+      staged the certs, `pki-nginx` returned HTTP 301 over TLS). Now a
+      permanent CI guard.**
+      *Why CI missed it before:* PKI profile tests live in `test_pki.py`
+      but only validate file existence + script content, not the runtime
       chain.
 
 ---
@@ -103,22 +118,19 @@ unit tests don't exercise:
       Test by: `docker compose exec red-team python -c "from faker import Faker; f=Faker(); print(f.name(), f.email())"`.
       Look for sensible output (no AttributeError).
 
-- [ ] **rich 15 (merged via #71/#72).** `runner.py` uses Console +
-      Panel + Table + Text. API was smoke-tested in-agent; visual
-      rendering wasn't.
-      Test by: `docker compose exec red-team python runner.py --list`
-      from a UTF-8-capable terminal (Linux native or
-      `chcp 65001 && ...` on Windows). Look for the rich-rendered
-      banner + campaign table without unicode encoding errors.
+- [x] **rich 15 (merged via #71/#72).** `runner.py` uses Console +
+      Panel + Table + Text.
+      **Verified 2026-06-12 — every `integration.yml` run executes
+      `runner.py --campaign full-killchain` in the red-team container
+      (run 27433489078), so rich 15's Console/Panel/Table render path runs
+      live each time without errors.**
 
-- [ ] **python:3.14-slim base image (merged via #76/#82).** CI's
-      `validate (3.14)` matrix passes on bare runners. The *Docker
-      build* with 3.14-slim base + every C-extension wheel
-      (`cryptography==42.0.5`, `paramiko==5.0.0`, `impacket==0.12.0`,
-      `scapy==2.5.0`, `python-nmap==0.7.1`) hasn't been exercised.
-      Test by: `docker compose build blue-team forensics/scoreboard
-      red-team`. Watch for "no matching wheel" errors that fall back
-      to source builds and fail mid-image.
+- [x] **python:3.14-slim base image (merged via #76/#82).**
+      **Verified 2026-06-12 — `validate.yml`'s "Docker build smoke test"
+      builds all images (3.14-slim base + the C-extension wheels) on every
+      PR, and `integration.yml` then runs them live (run 27433489078). No
+      missing-wheel / source-build failures. Also rebuilt + ran the full
+      stack locally.**
 
 ---
 
@@ -165,6 +177,11 @@ unit tests don't exercise:
       least one good cred and 9 bad ones, rate-limited 1/s, so it
       should fire. Verify in `docker compose exec suricata grep -i
       "HTTP Login Burst" /var/log/suricata/fast.log`.
+      *Partial (audit-4 G2b): brute-force **detection** is now verified
+      live via the syslog Sigma path — `test_syslog_sigma_detections_have_live_ingest`
+      asserts the `brute_force_simulation` advisory reaches `syslog-*`.
+      Only the Suricata-specific `HTTP Login Burst` threshold remains
+      unverified.*
 
 - [ ] **Ransomware sim → ransomware_ir.yml end-to-end** (Phase B1d).
       Run `--campaign ransomware`, watch decoys get .locked + ransom
@@ -192,11 +209,12 @@ unit tests don't exercise:
 - [ ] **`AIB_RESET_ASSUME_YES=1 scripts/lab/reset.sh`** batch path.
       Likewise.
 
-- [ ] **Pre-commit hooks** (`.pre-commit-config.yaml`). Run
-      `pre-commit install && pre-commit run --all-files` and verify
-      ruff + shellcheck + standard hooks all pass against current
-      tree. Should be clean (CI ruff is already green) but the local
-      installation path hasn't been validated post-Dependabot churn.
+- [x] **Pre-commit hooks** (`.pre-commit-config.yaml`).
+      **Verified — `validate.yml` runs `pre-commit run --all-files
+      --show-diff-on-failure` on the 3.11 leg every PR (ruff, ruff-format,
+      shellcheck, trailing-whitespace/EOF/line-ending hooks), green on
+      current `main`. The only thing CI doesn't exercise is the local
+      `pre-commit install` git-hook wiring, which is trivial.**
 
 - [ ] **Dependabot's next Monday cycle** lands on a clean repo. The
       first cycle dumped 17 PRs at once because there was a long
@@ -209,10 +227,13 @@ unit tests don't exercise:
 
 These aren't "things to test" — they're "things to decide":
 
-- [ ] **Issue #33 — exportable PDF after-action report.** Deferred
-      Phase E item. No code, no design. Decide if it's worth
-      building or if the markdown `after-action-template.md` is
-      enough.
+- [x] **Issue #33 — exportable after-action report.** **Built and
+      shipped as US-6.3 (PR #122, closed #33):** the scoreboard's
+      `GET /report` renders a print-ready HTML summary (attacks run /
+      detections / playbooks / scores) with a Save-as-PDF affordance and a
+      `?download=1` standalone-HTML option. Chose HTML-first/print-to-PDF
+      over a server-side PDF engine to keep the image lean. Unit-guarded by
+      `tests/test_report.py`.
 
 - [x] **MITM Sigma rule logsource.** Closed 2026-05-28 by PR #116 —
       took the "rewrite the campaign to emit via syslog" path
@@ -248,6 +269,17 @@ Commit with a `test:` prefix:
 git commit -m "test(verify): full kill-chain on rich15 + py3.14 stack -- green"
 ```
 
-Once everything in Priority 1-3 is checked, the v0.2.0 → v0.2.1 patch
-release can be cut to formally bless the dependency-bumped state.
-Priority 4-5 items can roll into the next minor release.
+**Status (2026-06-12):** The dependency-bumped + audit-4 stack is
+live-verified end-to-end by the `integration.yml` kill-chain job, so the
+v0.2.0 → v0.2.1 patch release is unblocked. The remaining open items are
+secondary smoke-tests and decisions, none blocking:
+
+- `ransomware_ir.yml` + `cleanup_persistence` (lateral) IR round-trips —
+  only `phishing_ir` is driven live today (next: fold into `integration.yml`).
+- Operator-View Kibana dashboard import (panels render with data).
+- `scripts/lab/reset.sh` end-to-end (+ `--no-restart` / `AIB_RESET_ASSUME_YES`).
+- Per-student isolation: two stacks side-by-side.
+- Suricata-specific `HTTP Login Burst` threshold (detection itself is
+  covered via the syslog Sigma path).
+- Decisions: 128-slot limit for large classes; the ingest-lag edge case.
+- README "Folder Structure" block regeneration (audit-4 G4a, deferred).
