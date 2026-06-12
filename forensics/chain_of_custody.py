@@ -2,7 +2,13 @@
 """
 forensics/chain_of_custody.py -- SHA-256 Chain of Custody for Evidence Files
 
-Hashes all evidence files and maintains a tamper-evident JSON custody log.
+Hashes all evidence files and maintains a SHA-256 integrity manifest
+(JSON custody log). audit-4 L4: this is an integrity manifest, not a
+tamper-*evident* one -- the log is plaintext and regenerable, so it
+detects accidental/incidental change but is not a cryptographic
+anti-tamper control (an actor who alters a file can re-hash the log).
+For true tamper-evidence the manifest would need to be HMAC-signed with
+a key the lab does not hold.
 Usage: python chain_of_custody.py --hash-dir /evidence [--verify]
 """
 

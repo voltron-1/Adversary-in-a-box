@@ -42,6 +42,12 @@ Designed as a hands-on companion to the *CompTIA Security+ Guide to Network Secu
 | Incident Response | Threat classification | IR playbook execution, forensics | Evidence integrity via hashing |
 | Forensic Dashboard | Threat actor TTPs (MITRE ATT&CK) | Alert triage, reporting | Secure audit log storage |
 
+> **Scope.** Hands-on lab exercises implement **Domains 1–3**. Objective
+> maps for **Domain 4 — Security Program Management** ([`docs/domain-4-objectives.md`](docs/domain-4-objectives.md))
+> and **Domain 5 — Governance, Risk & Compliance** ([`docs/domain-5-objectives.md`](docs/domain-5-objectives.md))
+> are provided and lean on the existing forensics/PKI tooling; they are
+> not yet driven by dedicated campaigns.
+
 ---
 
 ## Architecture
@@ -369,6 +375,14 @@ Each campaign logs structured events to the SIEM automatically. The blue team da
 | 3.2 TLS hardening | Enforce TLS 1.3, disable RC4/3DES | `tls_hardening` |
 | 3.3 Firewall rules | Block attack traffic with iptables | `block_ip.sh` |
 | 3.4 Evidence integrity | Hash artifacts with SHA-256 | `chain_of_custody.py` |
+
+### Domains 4 & 5 — Program Management · Governance, Risk & Compliance
+
+Objective maps only (no dedicated campaigns yet) — see
+[`docs/domain-4-objectives.md`](docs/domain-4-objectives.md) and
+[`docs/domain-5-objectives.md`](docs/domain-5-objectives.md). They reuse
+the after-action report, chain-of-custody manifest, and PKI tooling to
+practice incident reporting, evidence governance, and crypto policy.
 
 ---
 

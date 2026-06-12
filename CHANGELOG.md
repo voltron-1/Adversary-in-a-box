@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- audit-4 G3c: `tests/test_doc_freshness.py` gained `TestMitreMapFreshness`,
+  which parses the `docs/mitre-attack-map.md` Coverage Matrix and asserts
+  it equals `runner.TECHNIQUE_MAP` — the map can no longer drift from the
+  campaign registry.
+- audit-4 G4e: Logstash now has a healthcheck (probes the :9600 monitoring
+  API) so a dead pipeline reports `unhealthy` instead of silently dropping
+  events (L6); CI `validate.yml` matrix adds Python 3.13 (L8).
+
+### Changed
+
+- audit-4 G3c: regenerated `docs/mitre-attack-map.md` to match
+  `runner.CAMPAIGNS`. It had omitted 4 techniques (T1204, T1557, T1110,
+  T1486) and mis-attributed 4 to the wrong campaign — e.g. it told
+  students `--campaign lateral` was SSH hijacking when that's Pass-the-Hash
+  (`lateral-ssh`). All 16 single-campaign techniques are now mapped to the
+  correct campaign + module.
+- audit-4 G4b: README surfaces Domains 4 & 5 — the SY0-701 mapping and
+  exercise tables now reference `docs/domain-4-objectives.md` /
+  `domain-5-objectives.md` and state that hands-on exercises implement
+  Domains 1–3.
+- audit-4 G4d: `chain_of_custody.py` no longer calls its plaintext,
+  regenerable manifest "tamper-evident" — softened to "integrity manifest"
+  with a note on what true tamper-evidence would require.
+
 ### Fixed
 
 - **audit-4 C1 — the forensic scoreboard was scoring every run 0–0.**

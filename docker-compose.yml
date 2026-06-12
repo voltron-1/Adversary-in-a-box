@@ -313,6 +313,16 @@ services:
     mem_limit: 1g
     depends_on:
       - elasticsearch
+    # audit-4 L6: probe the Logstash monitoring API (port 9600) so a
+    # pipeline that never comes up surfaces as `unhealthy` instead of
+    # silently dropping every event. start_period covers JVM warm-up on a
+    # cold runner, mirroring the Elasticsearch probe above.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9600/_node/pipelines || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
     restart: unless-stopped
 
   kibana:
