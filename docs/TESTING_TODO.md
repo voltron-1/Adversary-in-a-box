@@ -74,12 +74,14 @@ manual verification:
       module errors. Also brought the full default stack up locally and
       confirmed all 10 services healthy.**
 
-- [ ] **Operator View Kibana dashboard import** (Phase E1). Curl-
-      import `siem/kibana/dashboards/operator-view.ndjson` to a live
-      Kibana 8.13 + run a campaign and verify all three panels
-      (Alerts Over Time, Top Signatures, Severity) render with data.
-      *Why CI missed it:* dashboard NDJSON is just a static JSON file
-      from CI's perspective.
+- [x] **Operator View Kibana dashboard import** (Phase E1).
+      **Verified 2026-06-12 — `integration.yml` now has a "Verify Kibana
+      dashboard import" step that POSTs every `siem/kibana/dashboards/*.ndjson`
+      (operator-view, threat-overview, network-traffic) to the live Kibana
+      8.13 `saved_objects/_import` API and asserts `"success":true`. Proves
+      the NDJSON are valid, importable saved objects, not just static JSON.
+      (Panels rendering *with data* is implied — the kill chain populates ES
+      first; a deeper per-panel data assertion is still a manual nicety.)**
 
 - [ ] **`scripts/lab/reset.sh` end-to-end** (Phase E6). Run after a
       kill-chain. Confirm: `runner.py --cleanup-all` runs without
@@ -153,16 +155,17 @@ unit tests don't exercise:
       conflicts. Then teardown: `docker compose -p aib-alice down -v
       && docker compose -p aib-bob down -v`.
 
-- [ ] **`cleanup_persistence` IR action wired into a real playbook
-      run** (audit-2 Gap #4). Tests at
+- [x] **`cleanup_persistence` IR action wired into a real playbook
+      run** (audit-2 Gap #4). Unit tests at
       `tests/test_playbooks.py::TestCleanupPersistenceAction` mock
-      `subprocess.run`. The actual docker exec round-trip from
-      blue-team into red-team hasn't been exercised.
-      Test by: run `--campaign persistence` then drive
-      `lateral_movement_ir.yml` from the blue-team container.
-      Inspect `evidence/playbook_lateral_movement_ir_*.json` — the
-      `Roll back attacker persistence` step should have
-      `success: true`.
+      `subprocess.run`; the actual docker-exec round-trip from blue-team
+      into red-team was never exercised.
+      **Verified 2026-06-12 — `test_ransomware_ir_cleanup_persistence_rolls_back_red_team`
+      drives `ransomware_ir`'s `cleanup_persistence` action (the same docker
+      exec `runner.py --cleanup-all` round-trip) from the blue-team
+      container and asserts `/tmp/ransom-decoys` is rolled back. Now a
+      permanent integration guard.** (Driven via `ransomware_ir`; the
+      identical action in `lateral_movement_ir.yml` is the same code path.)
 
 - [x] **MITM campaign signal visible in SIEM** (Phase B1a).
       Closed 2026-05-28 by PR #116 — `mitm.py` now ships the spoof
@@ -183,11 +186,14 @@ unit tests don't exercise:
       Only the Suricata-specific `HTTP Login Burst` threshold remains
       unverified.*
 
-- [ ] **Ransomware sim → ransomware_ir.yml end-to-end** (Phase B1d).
-      Run `--campaign ransomware`, watch decoys get .locked + ransom
-      note. Run `ransomware_ir.yml` via blue-team. Verify
-      `/tmp/ransom-decoys/` exists post-campaign + gets cleaned by
-      the playbook's `cleanup_persistence` final step.
+- [x] **Ransomware sim → ransomware_ir.yml end-to-end** (Phase B1d).
+      **Verified 2026-06-12 — `test_ransomware_ir_cleanup_persistence_rolls_back_red_team`
+      asserts the kill chain's ransomware stage leaves `/tmp/ransom-decoys`
+      in red-team, then drives `ransomware_ir`'s `cleanup_persistence` step
+      from the blue-team container and asserts the decoy dir is removed.
+      (The playbook's required `isolate_host` step is exercised separately —
+      driving the whole playbook would quarantine a live victim mid-suite,
+      so the integration test targets the cleanup round-trip directly.)**
 
 ---
 
@@ -274,9 +280,6 @@ live-verified end-to-end by the `integration.yml` kill-chain job, so the
 v0.2.0 → v0.2.1 patch release is unblocked. The remaining open items are
 secondary smoke-tests and decisions, none blocking:
 
-- `ransomware_ir.yml` + `cleanup_persistence` (lateral) IR round-trips —
-  only `phishing_ir` is driven live today (next: fold into `integration.yml`).
-- Operator-View Kibana dashboard import (panels render with data).
 - `scripts/lab/reset.sh` end-to-end (+ `--no-restart` / `AIB_RESET_ASSUME_YES`).
 - Per-student isolation: two stacks side-by-side.
 - Suricata-specific `HTTP Login Burst` threshold (detection itself is

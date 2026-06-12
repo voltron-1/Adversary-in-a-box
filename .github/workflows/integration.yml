@@ -101,6 +101,27 @@ jobs:
         fi
         echo "[pki] pki-nginx served a TLS response (G3a verified)"
 
+    - name: Verify Kibana dashboard import (Phase E1)
+      # Runs BEFORE the integration test (its tearDownClass does
+      # `docker compose down -v`). Import every shipped dashboard NDJSON
+      # into the live Kibana via the saved_objects API and assert success.
+      # On the Linux runner Kibana's :5601 is published to localhost (same
+      # as ES :9200 used by the tests). Proves the dashboards are valid,
+      # importable saved objects against the running Kibana 8.13 -- not
+      # just static JSON.
+      run: |
+        fail=
+        for f in siem/kibana/dashboards/*.ndjson; do
+          echo "=== importing $f ==="
+          resp=$(curl -s -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" \
+                   -H "kbn-xsrf: true" --form "file=@${f};type=application/ndjson" || true)
+          echo "$resp"
+          echo "$resp" | grep -q '"success":true' \
+            || { echo "::error::Kibana import failed for $f"; fail=1; }
+        done
+        if [ -n "$fail" ]; then exit 1; fi
+        echo "[kibana] all dashboards imported successfully"
+
     - name: Run integration test
       env:
         AIB_RUN_INTEGRATION: "1"
