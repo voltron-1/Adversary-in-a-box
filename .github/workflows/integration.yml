@@ -59,9 +59,12 @@ jobs:
         # audit-4 G3b: IR is opt-in by default now. The integration suite
         # exercises the response/playbook path (test_response_score_rises_*),
         # so it needs the blue-team IR container -- enable it explicitly.
-        # Also enable `pki` so the G3a one-shot CA bootstrap is verified live
-        # (the pki TLS check step below). (Last COMPOSE_PROFILES in .env wins.)
-        echo "COMPOSE_PROFILES=ir,pki" >> .env
+        # Also enable `pki` so the G3a one-shot CA bootstrap is verified live.
+        # Set it in the environment (not .env) so EVERY `docker compose`
+        # invocation in this job -- start.sh up AND the verify-step
+        # logs/exec -- sees the same active profiles. (Env overrides .env,
+        # which ships COMPOSE_PROFILES= empty after G3b.)
+        echo "COMPOSE_PROFILES=ir,pki" >> "$GITHUB_ENV"
         # The runner is on the public internet -- the preflight would
         # refuse to start. Air-gap is enforced via lab-net internal:true
         # at the network layer, which still applies.
@@ -93,8 +96,10 @@ jobs:
         echo "[pki] staged certs:";   ls -l pki-lab/certs/ || true
         ok=
         for i in $(seq 1 12); do
-          code=$(docker compose exec -T scoreboard \
-                   curl -sk -o /dev/null -w '%{http_code}' https://pki-nginx:443/ 2>/dev/null || true)
+          # Curl pki-nginx from inside itself (it has curl from its
+          # Dockerfile) -- the most direct proof nginx is serving TLS.
+          code=$(docker compose exec -T pki-nginx \
+                   curl -sk -o /dev/null -w '%{http_code}' https://localhost:443/ 2>/dev/null || true)
           echo "  attempt $i: HTTP $code"
           if [ -n "$code" ] && [ "$code" != "000" ]; then ok=1; break; fi
           sleep 5
