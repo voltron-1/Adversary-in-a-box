@@ -91,10 +91,9 @@ class TestKeywordLabSigmaRulesFire(unittest.TestCase):
     """
     Subset of lab rules that use the simple keyword-list selection +
     `and` condition pattern. The minimal evaluator above covers exactly
-    these. The other two lab rules (privesc_sudo with regex keywords +
-    `or` condition, exfil_https with field selectors) get separate
-    schema-only coverage below since a real matcher would require
-    pySigma at full strength.
+    these. The remaining lab rule (privesc_sudo, with regex keywords + an
+    `or` condition) gets separate schema-only coverage below since a real
+    matcher would require pySigma at full strength.
     """
 
     # (rule_filename, synthetic_event_that_should_fire)
@@ -120,6 +119,13 @@ class TestKeywordLabSigmaRulesFire(unittest.TestCase):
         (
             "impact_ransomware.yml",
             "rename in /tmp/ransom-decoys: notes.txt -> notes.txt.locked, ransom_note.txt dropped",
+        ),
+        (
+            # audit-4 G2b: exfil_https was rewritten from webproxy field
+            # selectors to the keyword pattern, so it now fires here.
+            "exfil_https.yml",
+            "https_exfil_simulation c2_beacon; user_agent python-requests/2.34 "
+            "dest exfil.example.top bytes 1500000",
         ),
     ]
 
@@ -148,9 +154,11 @@ class TestAdvancedLabSigmaRulesSchema(unittest.TestCase):
     """
 
     ADVANCED_RULES: dict[str, list[str]] = {
-        # rule_filename -> tokens we expect to find SOMEWHERE in the rule
+        # rule_filename -> tokens we expect to find SOMEWHERE in the rule.
+        # audit-4 G2b moved exfil_https to the keyword fixtures above; only
+        # privesc_sudo still uses features the minimal evaluator can't run
+        # (regex keywords + an `or` condition).
         "privesc_sudo.yml": ["NOPASSWD", "find", "vim", "python3"],
-        "exfil_https.yml": ["python-requests", ".onion", "c-cs-bytes"],
     }
 
     def test_advanced_rules_carry_expected_keyword_tokens(self) -> None:
