@@ -399,7 +399,46 @@ services:
       - ./pki-lab/tls_hardening/nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro
       # Cert path matches the ssl_certificate_* directives in nginx-tls.conf.
       - ./pki-lab/certs:/etc/nginx/ssl:ro
+    # audit-4 G3a: wait for the one-shot CA bootstrap to stage the certs so
+    # nginx doesn't crash-loop on a clean checkout.
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  # audit-4 G3a: one-shot CA bootstrap so `docker compose --profile pki up`
+  # serves TLS from a clean checkout. Builds the two-tier CA + a victim-web
+  # leaf cert and stages the three files pki-nginx mounts. Idempotent (skips
+  # if certs already exist). Runs in alpine `sh` with no network -- the
+  # setup_ca.sh / issue_cert.sh scripts are POSIX, so no bash/apt needed
+  # (and lab-net is air-gapped anyway).
+  pki-init:
+    image: alpine/openssl
+    hostname: pki-init
+    profiles: ["pki"]
+    volumes:
+      - ./pki-lab:/workspace
+    working_dir: /workspace
+    environment:
+      - PKI_DIR=/workspace/ca
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -f certs/victim-web.cert.pem ] && [ -f certs/victim-web.key.pem ] \
+           && [ -f certs/ca-chain.cert.pem ]; then
+          echo "[pki-init] certs already present -- skipping CA bootstrap"
+          exit 0
+        fi
+        echo "[pki-init] bootstrapping lab CA + victim-web leaf cert..."
+        sh setup_ca.sh
+        sh issue_cert.sh victim-web.lab.local
+        mkdir -p certs
+        cp ca/intermediate-ca/certs/victim-web.lab.local.cert.pem certs/victim-web.cert.pem
+        cp ca/intermediate-ca/private/victim-web.lab.local.key.pem certs/victim-web.key.pem
+        cp ca/intermediate-ca/certs/ca-chain.cert.pem certs/ca-chain.cert.pem
+        echo "[pki-init] staged certs into pki-lab/certs/"
+    restart: "no"
 
   pki-ca:
     image: alpine/openssl

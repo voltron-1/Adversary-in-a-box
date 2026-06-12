@@ -16,15 +16,21 @@ if [ ! -f "$CERT" ] || [ ! -f "$KEY" ]; then
 ====================================================================
 pki-nginx: TLS certificate or key missing under /etc/nginx/ssl/.
 
-The lab Root CA hasn't been bootstrapped. Run these from the host:
+The lab Root CA hasn't been bootstrapped. Normally the `pki-init` one-shot
+service does this automatically (audit-4 G3a) -- if you're seeing this, it
+didn't run. Re-run the profile so pki-init fires:
+
+    docker compose --profile pki up pki-init pki-nginx
+
+Or bootstrap by hand from the host (note: intermediate-ca, not intermediate):
 
     docker compose --profile pki up -d pki-ca
     docker compose --profile pki exec pki-ca sh setup_ca.sh
     docker compose --profile pki exec pki-ca sh issue_cert.sh victim-web.lab.local
 
-    cp pki-lab/ca/intermediate/certs/victim-web.lab.local.cert.pem  pki-lab/certs/victim-web.cert.pem
-    cp pki-lab/ca/intermediate/private/victim-web.lab.local.key.pem pki-lab/certs/victim-web.key.pem
-    cp pki-lab/ca/intermediate/certs/ca-chain.cert.pem              pki-lab/certs/ca-chain.cert.pem
+    cp pki-lab/ca/intermediate-ca/certs/victim-web.lab.local.cert.pem  pki-lab/certs/victim-web.cert.pem
+    cp pki-lab/ca/intermediate-ca/private/victim-web.lab.local.key.pem pki-lab/certs/victim-web.key.pem
+    cp pki-lab/ca/intermediate-ca/certs/ca-chain.cert.pem              pki-lab/certs/ca-chain.cert.pem
 
     docker compose --profile pki up -d pki-nginx
 

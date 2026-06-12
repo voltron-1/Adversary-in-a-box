@@ -102,14 +102,25 @@ docker compose exec red-team python runner.py --campaign full-killchain
 | T1595 | Port scan threshold alert | Suricata (`ET SCAN`) / Zeek `port_scan.zeek` |
 | T1566.001 | Email header analysis | Suricata IDS |
 | T1190 | Web application attack | Suricata (`ET WEB_SERVER`) |
-| T1204 | EICAR / dropper file event | File integrity + Sigma `file_event` |
+| T1204 | EICAR / dropper advisory | Syslog → Sigma `malware_drop_eicar.yml` |
 | T1557 | Duplicate MAC/IP binding advisory | Syslog → Logstash + Sigma MITM rule |
-| T1110 | Repeated auth failures | Suricata / victim-web access log |
-| T1548.001 / T1548.003 | Sudo/SUID exec logging | Syslog → Logstash + Sigma `privesc_sudo.yml` |
+| T1110 | Repeated auth failures | Syslog → Sigma `credential_access_brute_force.yml` |
+| T1548.001 / T1548.003 | Sudo/SUID exec logging | Syslog → Sigma `privesc_sudo.yml` |
 | T1550.002 | Pass-the-hash detection | Sigma rule |
 | T1563.001 | SSH anomaly detection | Zeek `ssh.log` |
 | T1048.003 | DNS tunnel detection | Zeek `dns_exfil.zeek` |
-| T1041 | C2 beacon / HTTPS exfil | Suricata C2 rules + Sigma `exfil_https.yml` |
-| T1486 | Mass file rename / ransom note | File event + Sigma rule |
-| T1053.003 | Cron modification audit | Sigma `persistence_cron.yml` |
+| T1041 | HTTPS exfil advisory | Syslog → Sigma `exfil_https.yml` (¹) |
+| T1486 | Mass file rename / ransom note | Syslog → Sigma `impact_ransomware.yml` |
+| T1053.003 | Cron modification audit | Syslog → Sigma `persistence_cron.yml` |
 | T1098.004 | SSH authorized_keys change | Syslog + file integrity |
+
+> **Syslog detection path (audit-4 G2b):** lab campaigns simulate attacks
+> without putting matching packets on the wire, so the host-/file-/proxy-
+> sourced Sigma rules are fed by a behavioral advisory each campaign ships
+> over syslog to `logstash:5514`. `tests/test_detection_ingest.py` keeps
+> every rule mapped to a live ingest path.
+>
+> **¹ T1041 (audit-4 G3d):** the Suricata C2 beacon / reverse-shell sigs in
+> `local.rules` key on `$EXTERNAL_NET`, which cannot exist on the
+> `internal: true` lab-net, so they never fire here (kept as production
+> reference). T1041's live detection is the syslog Sigma rule above.

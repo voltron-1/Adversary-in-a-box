@@ -53,9 +53,15 @@ jobs:
           if [ -f "$req" ]; then pip install -r "$req"; fi
         done
 
-    - name: Prepare .env (skip egress preflight, accept default profile)
+    - name: Prepare .env (skip egress preflight, enable IR profile)
       run: |
         cp .env.example .env
+        # audit-4 G3b: IR is opt-in by default now. The integration suite
+        # exercises the response/playbook path (test_response_score_rises_*),
+        # so it needs the blue-team IR container -- enable it explicitly.
+        # Also enable `pki` so the G3a one-shot CA bootstrap is verified live
+        # (the pki TLS check step below). (Last COMPOSE_PROFILES in .env wins.)
+        echo "COMPOSE_PROFILES=ir,pki" >> .env
         # The runner is on the public internet -- the preflight would
         # refuse to start. Air-gap is enforced via lab-net internal:true
         # at the network layer, which still applies.
@@ -74,6 +80,27 @@ jobs:
       run: |
         mkdir -p "$EVIDENCE_DIR"
         python -m unittest discover -s tests/integration -v
+
+    - name: Verify PKI profile serves TLS (audit-4 G3a)
+      # The pki-init one-shot should have bootstrapped the CA + staged the
+      # victim-web cert from a clean checkout, so pki-nginx serves HTTPS on
+      # :8443 instead of crash-looping. A TLS handshake returning any HTTP
+      # status proves the certs loaded.
+      run: |
+        echo "[pki] pki-init result:"; docker compose logs pki-init --tail=20 || true
+        ok=
+        for i in $(seq 1 12); do
+          code=$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:8443/ || true)
+          echo "  attempt $i: HTTP $code"
+          if [ -n "$code" ] && [ "$code" != "000" ]; then ok=1; break; fi
+          sleep 5
+        done
+        if [ -z "$ok" ]; then
+          echo "::error::pki-nginx did not serve TLS on :8443 -- G3a cert bootstrap failed"
+          docker compose logs pki-nginx --tail=50 || true
+          exit 1
+        fi
+        echo "[pki] pki-nginx served a TLS response on :8443 (G3a verified)"
 
     - name: Dump compose logs on failure
       if: failure()

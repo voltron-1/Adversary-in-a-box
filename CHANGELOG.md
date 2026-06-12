@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- audit-4 G3a: a one-shot `pki-init` compose service bootstraps the lab CA
+  and stages the victim-web cert so `docker compose --profile pki up`
+  serves `https://localhost:8443/` from a clean checkout (no manual
+  cert-gen). `setup_ca.sh` was made POSIX-`sh` compatible (it used bash
+  process substitution + brace expansion) so it runs in the air-gapped
+  alpine init with no bash/network — which also fixes the latent
+  "`sh setup_ca.sh` doesn't work" bug. `pki-nginx` now
+  `depends_on: pki-init` (service_completed_successfully); its cert-missing
+  guard's stale `intermediate/` paths are corrected to `intermediate-ca/`.
 - audit-4 G2b: every campaign whose attack produces no Suricata-visible
   packets now ships a behavioral advisory over syslog (`logstash:5514`) via
   a shared `BaseCampaign.emit_syslog_advisory()` helper, so its paired
@@ -31,6 +40,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- audit-4 G3b: the host-privileged `blue-team` IR container is now **opt-in**.
+  `.env.example` ships `COMPOSE_PROFILES=` (was `ir`), so a bare
+  `docker compose up` no longer starts the container that holds
+  `/var/run/docker.sock` + `NET_ADMIN` and an unauthenticated
+  `POST /api/run-playbook` — matching the README security note (which the
+  default previously contradicted). Enable IR with `COMPOSE_PROFILES=ir`;
+  `integration.yml` sets it so the response/playbook tests still run.
+- audit-4 G3d: documented that the Suricata C2 / reverse-shell / exfil
+  signatures keyed on `$EXTERNAL_NET` cannot fire on the `internal: true`
+  lab-net (kept as production reference). `local.rules` and
+  `docs/mitre-attack-map.md` now state T1041's live detection is the syslog
+  Sigma rule (`exfil_https.yml`, via G2b), not Suricata.
 - audit-4 G2c: `block_ip.sh` is relabeled as an explicit **simulated
   tabletop** control. It ran `iptables` inside the blue-team network
   namespace, which attacker→victim traffic never transits, so the "block"

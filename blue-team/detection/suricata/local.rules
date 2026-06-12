@@ -34,8 +34,17 @@ alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH C
 # ---------------------------------------------------------------------------
 # EXFILTRATION — T1048.003 DNS Tunnel | T1041 HTTPS C2
 # ---------------------------------------------------------------------------
+# audit-4 G3d: rules keyed on $EXTERNAL_NET (the HTTPS-C2 beacon and the
+# reverse-shell / Metasploit sigs below) CANNOT fire in this lab. lab-net is
+# `internal: true` (air-gapped), so there is no EXTERNAL_NET an in-lab host
+# can reach -- the T1041 https_exfil campaign never crosses one. They are
+# kept as production-reference templates. The LIVE detection path for T1041
+# is the syslog Sigma rule exfil_https.yml (audit-4 G2b ships the campaign's
+# advisory over syslog), plus Zeek for the DNS-tunnel side. See
+# docs/mitre-attack-map.md.
 alert dns any any -> any 53 (msg:"ET DNS_TUNNEL Long DNS Subdomain - Possible Tunneling"; content:"|01 00 00 01 00 00 00 00 00 00|"; depth:10; pcre:"/^[a-z2-7]{30,}\./"; classtype:trojan-activity; sid:1000050; rev:1;)
 alert dns any any -> any 53 (msg:"ET DNS_TUNNEL High DNS Query Rate"; threshold:type threshold,track by_src,count 50,seconds 10; classtype:trojan-activity; sid:1000051; rev:1;)
+# (reference only -- cannot fire on air-gapped lab-net; see note above)
 alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"ET C2 Suspicious HTTPS Beacon - Non-standard User-Agent"; content:"User-Agent:"; http_header; nocase; pcre:"/User-Agent:[^\r\n]*(?!Mozilla|Chrome|Safari|curl|python)/"; classtype:trojan-activity; sid:1000052; rev:1;)
 
 # ---------------------------------------------------------------------------
@@ -46,6 +55,8 @@ alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET PERSISTENCE Crontab Modificati
 # ---------------------------------------------------------------------------
 # MALWARE / GENERAL
 # ---------------------------------------------------------------------------
+# audit-4 G3d: reference only -- $EXTERNAL_NET can't exist on air-gapped
+# lab-net, so these never fire here (see the EXFILTRATION note above).
 alert tcp $HOME_NET any -> $EXTERNAL_NET any (msg:"ET MALWARE Reverse Shell Connection Attempt"; content:"/bin/bash"; content:"-i"; classtype:trojan-activity; sid:1000070; rev:1;)
 alert tcp $HOME_NET any -> $EXTERNAL_NET 4444 (msg:"ET MALWARE Metasploit Default Port C2 Beacon"; classtype:trojan-activity; sid:1000071; rev:1;)
 
