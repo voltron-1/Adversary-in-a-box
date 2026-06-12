@@ -177,7 +177,17 @@ class Scorer:
                 r_ts = next((t for t in resp_rows if start <= t < end), None)
             pairs.append((cid, start, a_ts, r_ts))
 
-        false_positives = sum(1 for i, done in enumerate(consumed) if not done)
+        # audit-4 G1b: a false positive is an alert outside EVERY campaign
+        # window (e.g. pre-run startup noise) -- NOT merely an alert the
+        # per-window MTTD loop didn't consume. A single campaign can
+        # legitimately trip many Suricata alerts (a port scan fires one per
+        # probe); only the first is consumed for MTTD, but the rest are
+        # additional detections of the SAME campaign, not false positives.
+        # The G1e live run exposed this: 3 Gold detections (30 pts) were
+        # zeroed by 10 in-window alerts mis-counted as FPs (-50).
+        false_positives = sum(
+            1 for t in alert_ts if not any(start <= t < end for _cid, start, end in windows)
+        )
         return pairs, len(ends), false_positives
 
     # ------------------------------------------------------------------ scoring

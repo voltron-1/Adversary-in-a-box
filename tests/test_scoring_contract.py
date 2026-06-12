@@ -166,6 +166,33 @@ class TestScorerEndToEnd(unittest.TestCase):
         self.assertEqual(red["campaigns_undetected"], 0)  # both campaigns got an alert
         self.assertEqual(red["total"], 20)
 
+    def test_multiple_in_window_alerts_are_not_false_positives(self) -> None:
+        """audit-4 G1b regression (found by the G1e live run): a campaign
+        that trips several Suricata alerts inside its window must not have
+        the extras counted as false positives -- only the first is consumed
+        for MTTD, the rest are additional detections of the SAME campaign.
+        On the buggy code these three in-window alerts scored a Gold
+        detection (10) but subtracted 2*5 for the 'extra' two, plus 5 for
+        the genuine pre-window FP, zeroing the blue detection score."""
+        scorer = _FakeESScorer(
+            {
+                "red-team-events-*": [
+                    {"campaign_id": "A", "event_type": "campaign_start", "@timestamp": _ts(10, 1)},
+                    {"campaign_id": "A", "event_type": "campaign_end", "@timestamp": _ts(10, 5)},
+                ],
+                "suricata-*": [
+                    {"event_type": "alert", "@timestamp": _ts(10, 0)},      # pre-window -> FP
+                    {"event_type": "alert", "@timestamp": _ts(10, 1, 30)},  # in window -> MTTD
+                    {"event_type": "alert", "@timestamp": _ts(10, 2)},      # in window -> NOT a FP
+                    {"event_type": "alert", "@timestamp": _ts(10, 3)},      # in window -> NOT a FP
+                ],
+                "ir-events-*": [],
+            }
+        )
+        blue = self.scorer_mod.Scorer.get_blue_team_score(scorer)
+        self.assertEqual(blue["false_positives"], 1)  # only the 10:00 pre-window alert
+        self.assertGreater(blue["detection_score"], 0)  # Gold detection survives
+
     def test_missing_join_fields_collapse_to_zero(self) -> None:
         """Documents the C1 failure mode: pre-fix docs (no campaign_id /
         no event_type) produce empty windows and a 0-0 tie."""

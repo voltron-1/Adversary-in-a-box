@@ -36,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     MTTA signal), joined by `campaign_id` when threaded through context.
   - `scorer._evidence_bonus` now recognizes the manifest filenames the
     forensic tools actually produce (`manifest.json`, `custody.json`).
+  - **G1b false-positive accounting** — the live G1e kill-chain run
+    revealed the FP count included every alert the per-window MTTD loop
+    didn't consume, so a campaign that legitimately trips multiple
+    Suricata alerts (a port scan fires one per probe) had its extras
+    counted as false positives, subtracting enough to zero out an
+    otherwise-Gold blue detection score. Corrected to count only alerts
+    falling outside *every* campaign window (matching the documented
+    intent); guarded by a new `test_scoring_contract` case.
 - **audit-4 G2a — Elasticsearch healthcheck always reported healthy.**
   `docker-compose.yml` left the `_cluster/health` query string unquoted,
   so under `CMD-SHELL` the `&` backgrounded curl and the probe reduced to
