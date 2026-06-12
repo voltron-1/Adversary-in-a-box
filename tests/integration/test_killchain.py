@@ -138,6 +138,37 @@ def _es_query(query: dict) -> dict:
     return {}
 
 
+def _scoreboard_scores() -> dict:
+    """Fetch the scoreboard's computed scores from inside its container.
+
+    Curls the scoreboard API on its own localhost so the result doesn't
+    depend on whether :5002 is published to the test host (it isn't on
+    Docker Desktop/WSL2). Returns parsed JSON, or {} on error.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "docker",
+                "compose",
+                "exec",
+                "-T",
+                "scoreboard",
+                "curl",
+                "-sm10",
+                "http://localhost:5002/api/scores",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return json.loads(proc.stdout)
+    except Exception:
+        pass
+    return {}
+
+
 @unittest.skipUnless(
     os.environ.get("AIB_RUN_INTEGRATION") == "1",
     "Set AIB_RUN_INTEGRATION=1 to run the docker-compose-driven "
@@ -266,6 +297,39 @@ class TestFullKillchain(unittest.TestCase):
             "kill chain. Either the campaign didn't fire, the SIEM "
             "didn't ingest, or the Suricata rule keyword drifted from "
             "TECHNIQUE_KEYWORDS:\n  - " + "\n  - ".join(missing),
+        )
+
+    def test_scoreboard_reports_nonzero_scores(self) -> None:
+        # audit-4 G1e: the kill chain emits per-run campaign lifecycle +
+        # technique events (each tagged with a campaign_id), and Suricata
+        # fires on the stages that put bytes on the wire. The scoreboard
+        # joins attack -> detection by campaign-time-window, so it must
+        # report a NON-ZERO red score (campaigns_completed) AND a non-zero
+        # blue detection score (>=1 alert correlated to a campaign window).
+        #
+        # This is the assertion that fails on pre-audit-4 main: the
+        # scorer's join keys (campaign_id / event_type) were emitted by
+        # nothing, so _correlate() saw zero rows and every run scored 0-0
+        # while CI stayed green. It is the regression guard for finding C1.
+        scores = _scoreboard_scores()
+        self.assertTrue(
+            scores,
+            "could not fetch /api/scores from the scoreboard container -- "
+            "is the scoreboard service up and ES reachable?",
+        )
+        red_total = scores.get("red_team", {}).get("total", 0)
+        blue_detection = scores.get("blue_team", {}).get("detection_score", 0)
+        self.assertGreater(
+            red_total,
+            0,
+            "red team scored 0 -- campaign_start/campaign_end lifecycle "
+            f"events are not reaching red-team-events-* in ES. scores={scores}",
+        )
+        self.assertGreater(
+            blue_detection,
+            0,
+            "blue detection scored 0 -- no Suricata alert was correlated to "
+            f"any campaign time-window. scores={scores}",
         )
 
     def test_compose_services_all_running(self) -> None:

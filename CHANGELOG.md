@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **audit-4 C1 — the forensic scoreboard was scoring every run 0–0.**
+  `forensics/scoreboard/scorer.py` joined attack → detection → response
+  on `campaign_id` + `event_type`, but no producer emitted either field:
+  `mitre_tagger.tag_and_emit` (the only writer to `red-team-events-*`)
+  emitted neither, the `campaign_start/end` events carrying `event_type`
+  were written by `utils/logger.py` to a local file no Logstash pipeline
+  ingests, `campaign_id` was written by nothing anywhere, the `ir-events-*`
+  index was written by nothing, and the `manifest.sha256` the evidence
+  bonus keyed on was produced by nothing. Net effect: red and blue both
+  scored 0, the winner was always a "tie", and every real Suricata alert
+  was counted as a false positive (it lacked `campaign_id`). Fixes:
+  - `runner.py` mints a per-run `campaign_id` (UUID) and emits
+    `campaign_start` (before the attack) and `campaign_end` (in a
+    `finally`, so a crashed stage is still scored) to `red-team-events-*`
+    via the tagger; every per-technique doc carries the same id.
+  - `mitre_tagger` gained `emit_lifecycle()`, now stamps `campaign_id` +
+    `event_type` on every doc, builds its index date in UTC (audit-4 L7),
+    and imports `requests` lazily so it's unit-testable without the dep.
+  - `scorer._correlate()` replaces the impossible `campaign_id`-on-alert
+    join with **time-window attribution**: each Suricata alert is matched
+    to the campaign whose `[campaign_start, next campaign_start)` window
+    it falls in (the lab runs campaigns sequentially). Alerts outside any
+    window are the false-positive count.
+  - `playbook_engine` emits an `ir-events-*` `playbook_complete` doc (the
+    MTTA signal), joined by `campaign_id` when threaded through context.
+  - `scorer._evidence_bonus` now recognizes the manifest filenames the
+    forensic tools actually produce (`manifest.json`, `custody.json`).
+- **audit-4 G2a — Elasticsearch healthcheck always reported healthy.**
+  `docker-compose.yml` left the `_cluster/health` query string unquoted,
+  so under `CMD-SHELL` the `&` backgrounded curl and the probe reduced to
+  a `timeout=5s` variable assignment that always exits 0 — ES could be
+  down and Kibana/scoreboard would still start against it. Quoted the URL.
+
 ### Added
 
 - Exportable after-action report (US-6.3). The forensic scoreboard now
@@ -18,6 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over the existing `_compute_scores()` data, so it adds no new
   dependencies and no scoring/ELK changes. New `templates/report.html`,
   `_report_context()` shaper in `app.py`, and `tests/test_report.py`.
+- `tests/test_scoring_contract.py` — the regression test that would have
+  caught C1. Asserts the tagger emits the exact join fields the scorer
+  reads (producer contract) and that an end-to-end scoring pass over
+  producer-shaped ES docs yields non-zero, correctly-tiered red **and**
+  blue scores with a real winner (consumer contract). Runs in the plain
+  unit suite (no Docker).
+- `tests/integration/test_killchain.py::test_scoreboard_reports_nonzero_scores`
+  — live G1e assertion: after a full kill chain the scoreboard reports a
+  non-zero red total and non-zero blue detection score.
+- `docs/audit-2026-05-31.md` — the audit-4 findings + phased (G1–G4)
+  remediation plan.
 - `exfil-https` campaign (T1041) and `persistence-sshkey` campaign
   (T1098.004) registered in `runner.py`. Same bug class as Phase A6
   (SuidHunt) and audit-2 Gap #10 (SshHijack): `HttpsExfilCampaign` and

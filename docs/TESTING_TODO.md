@@ -8,6 +8,34 @@
 
 ---
 
+## Priority 0 — Verify the audit-4 scoring-loop fix on a live stack
+
+The C1 fix (`docs/audit-2026-05-31.md` Phase G1) is unit-guarded by
+`tests/test_scoring_contract.py`, but the cross-container data flow and
+the time-window alert correlation (G1b) can only be proven on the real
+stack. CI's `integration.yml` job (`test_scoreboard_reports_nonzero_scores`)
+covers this when triggered, but confirm manually at least once:
+
+- [ ] **Scoreboard shows non-zero scores after a kill chain.**
+      `scripts/lab/start.sh` → `docker compose exec red-team python
+      runner.py --campaign full-killchain` → open `http://localhost:5002`
+      (or `curl` the scoreboard's `/api/scores`). Confirm: red total > 0
+      (campaigns_completed reflects all stages), blue `detection_score`
+      > 0, `false_positives` is small (only pre-run startup noise), and a
+      real `winner` (not "tie"). *Why CI couldn't catch it before:* unit
+      tests mocked the ES seam; the contract between `mitre_tagger` →
+      `red-team-events-*` → `scorer` was never exercised end-to-end.
+- [ ] **MTTA / response score lights up after an IR playbook.** Run a
+      playbook (dashboard `POST /api/run-playbook` or the engine
+      directly) with `campaign_id` in context; confirm an `ir-events-*`
+      `playbook_complete` doc lands in ES and the blue `response_score`
+      rises. *Why CI missed it:* `ir-events-*` was written by nothing
+      until G1c.
+- [ ] **Time-window attribution holds under ingest lag.** Watch for a
+      detection that arrives after the *next* campaign started (Logstash
+      lag) being attributed to the wrong window. Tolerable for the
+      detection bonus, but note if MTTD looks implausibly large.
+
 ## Priority 1 — Verify the Dependabot-merged stack actually runs
 
 The 10 low-risk dependency bumps + 4 majors (faker, paramiko, rich,

@@ -15,6 +15,7 @@ import yaml
 PLAYBOOK_DIR = Path(__file__).parent / "playbooks"
 ACTIONS_DIR = Path(__file__).parent / "actions"
 EVIDENCE_DIR = Path(os.environ.get("EVIDENCE_DIR", "/evidence"))
+ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "http://elasticsearch:9200")
 
 
 class PlaybookEngine:
@@ -69,7 +70,34 @@ class PlaybookEngine:
         with open(log_path, "w") as f:
             json.dump(summary, f, indent=2)
 
+        # audit-4 G1c: emit the response-side event the scoreboard reads as
+        # the MTTA (response) signal. Joined to the attack by campaign_id
+        # when the caller threads it through `context`; otherwise the
+        # scorer falls back to time-window attribution. Previously the
+        # `ir-events-*` index the scorer queries was written by nothing, so
+        # the response score was always zero.
+        self._emit_ir_event(summary, context)
+
         return summary
+
+    def _emit_ir_event(self, summary: dict, context: dict) -> None:
+        """POST a playbook_complete doc to ir-events-*. Non-fatal on failure."""
+        doc = {
+            "event_type": "playbook_complete",
+            "campaign_id": context.get("campaign_id"),
+            "playbook": self.playbook_name,
+            "steps_total": summary["steps_total"],
+            "steps_completed": summary["steps_completed"],
+            "@timestamp": datetime.now(UTC).isoformat(),
+        }
+        index = f"ir-events-{datetime.now(UTC).strftime('%Y.%m.%d')}"
+        try:
+            import requests  # lazy: keep the engine importable without the dep
+
+            resp = requests.post(f"{ELASTICSEARCH_URL}/{index}/_doc", json=doc, timeout=3)
+            resp.raise_for_status()
+        except Exception:
+            pass
 
     def _execute_step(self, step: dict, context: dict) -> dict:
         step_name = step.get("name", "Unknown")

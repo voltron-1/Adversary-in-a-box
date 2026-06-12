@@ -8,8 +8,6 @@ to the ELK SIEM via HTTP for real-time detection and correlation.
 import os
 from datetime import UTC, datetime
 
-import requests
-
 # MITRE ATT&CK technique metadata index
 TECHNIQUE_METADATA = {
     "T1595": {
@@ -131,11 +129,21 @@ class MitreTagger:
             },
         )
 
-    def tag_event(self, technique_id: str, event: dict) -> dict:
-        """Enrich an event dict with ATT&CK metadata."""
+    def tag_event(self, technique_id: str, event: dict, campaign_id: str | None = None) -> dict:
+        """Enrich an event dict with ATT&CK metadata.
+
+        audit-4 G1a: every emitted doc now carries ``campaign_id`` (the
+        per-run correlation key the scoreboard joins on) and an
+        ``event_type`` discriminator. Before this fix the tagger emitted
+        neither, so ``forensics/scoreboard/scorer.py`` -- which keys its
+        whole MTTD/MTTA join on those two fields -- always saw zero rows
+        and every run scored 0-0.
+        """
         meta = self.get_metadata(technique_id)
         return {
             **event,
+            "campaign_id": campaign_id,
+            "event_type": "attack_technique",
             "threat": {
                 "framework": "MITRE ATT&CK",
                 "technique": {
@@ -154,15 +162,42 @@ class MitreTagger:
             "source.ip": os.environ.get("ATTACKER_IP", "172.20.0.10"),
         }
 
-    def tag_and_emit(self, technique_id: str, event: dict):
-        """Tag an event and emit it to Elasticsearch."""
-        enriched = self.tag_event(technique_id, event)
-        index = f"red-team-events-{datetime.now().strftime('%Y.%m.%d')}"
-        url = f"http://{self.SIEM_HOST}:{self.SIEM_PORT}/{index}/_doc"
+    def _index_name(self) -> str:
+        # UTC date so the index bucket matches the UTC `@timestamp` on the
+        # docs (audit-4 L7: previously built from local-time now()).
+        return f"red-team-events-{datetime.now(UTC).strftime('%Y.%m.%d')}"
+
+    def _post(self, doc: dict) -> dict:
+        """POST a doc to the red-team-events index. Non-fatal on failure."""
+        url = f"http://{self.SIEM_HOST}:{self.SIEM_PORT}/{self._index_name()}/_doc"
         try:
-            resp = requests.post(url, json=enriched, timeout=3)
+            import requests  # lazy: lets this module import without the dep
+
+            resp = requests.post(url, json=doc, timeout=3)
             resp.raise_for_status()
-        except requests.RequestException:
+        except Exception:
             # Non-fatal — SIEM may not be available during standalone testing
             pass
-        return enriched
+        return doc
+
+    def tag_and_emit(self, technique_id: str, event: dict, campaign_id: str | None = None):
+        """Tag an event and emit it to Elasticsearch."""
+        return self._post(self.tag_event(technique_id, event, campaign_id))
+
+    def emit_lifecycle(self, event_type: str, campaign_id: str, extra: dict | None = None) -> dict:
+        """Emit a campaign lifecycle event (campaign_start / campaign_end).
+
+        audit-4 G1a: these are the docs the scoreboard reads as the
+        attack-start timestamp (MTTD anchor) and the campaigns-completed
+        count. They were previously written only to a local log file
+        (utils/logger.py) that no Logstash pipeline ingests, so they never
+        reached Elasticsearch.
+        """
+        doc = {
+            "campaign_id": campaign_id,
+            "event_type": event_type,
+            "@timestamp": datetime.now(UTC).isoformat(),
+            "source.ip": os.environ.get("ATTACKER_IP", "172.20.0.10"),
+            **(extra or {}),
+        }
+        return self._post(doc)
