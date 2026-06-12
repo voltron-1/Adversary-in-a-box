@@ -83,24 +83,27 @@ jobs:
 
     - name: Verify PKI profile serves TLS (audit-4 G3a)
       # The pki-init one-shot should have bootstrapped the CA + staged the
-      # victim-web cert from a clean checkout, so pki-nginx serves HTTPS on
-      # :8443 instead of crash-looping. A TLS handshake returning any HTTP
-      # status proves the certs loaded.
+      # victim-web cert from a clean checkout, so pki-nginx serves HTTPS
+      # instead of crash-looping. Reach it from inside a lab-net container
+      # (same path the integration tests use for ES/scoreboard), which
+      # avoids host port-publish quirks. Any HTTP status proves TLS loaded.
       run: |
-        echo "[pki] pki-init result:"; docker compose logs pki-init --tail=20 || true
+        echo "[pki] pki-init log:";   docker compose logs pki-init  2>&1 | tail -25 || true
+        echo "[pki] pki-nginx log:";  docker compose logs pki-nginx 2>&1 | tail -25 || true
+        echo "[pki] staged certs:";   ls -l pki-lab/certs/ || true
         ok=
         for i in $(seq 1 12); do
-          code=$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:8443/ || true)
+          code=$(docker compose exec -T scoreboard \
+                   curl -sk -o /dev/null -w '%{http_code}' https://pki-nginx:443/ 2>/dev/null || true)
           echo "  attempt $i: HTTP $code"
           if [ -n "$code" ] && [ "$code" != "000" ]; then ok=1; break; fi
           sleep 5
         done
         if [ -z "$ok" ]; then
-          echo "::error::pki-nginx did not serve TLS on :8443 -- G3a cert bootstrap failed"
-          docker compose logs pki-nginx --tail=50 || true
+          echo "::error::pki-nginx did not serve TLS -- G3a cert bootstrap failed"
           exit 1
         fi
-        echo "[pki] pki-nginx served a TLS response on :8443 (G3a verified)"
+        echo "[pki] pki-nginx served a TLS response (G3a verified)"
 
     - name: Dump compose logs on failure
       if: failure()
