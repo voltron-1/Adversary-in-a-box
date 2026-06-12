@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Exportable after-action report (US-6.3). The forensic scoreboard now
+  serves a **📄 Download Report** button / `GET /report` endpoint that
+  renders a self-contained, print-friendly HTML summary of attacks run,
+  detections made, playbooks executed, and final scores. Instructors
+  Save-as-PDF from the browser, or fetch `?download=1` for a standalone
+  `.html` attachment — no lab login required. The report is a second view
+  over the existing `_compute_scores()` data, so it adds no new
+  dependencies and no scoring/ELK changes. New `templates/report.html`,
+  `_report_context()` shaper in `app.py`, and `tests/test_report.py`.
 - `exfil-https` campaign (T1041) and `persistence-sshkey` campaign
   (T1098.004) registered in `runner.py`. Same bug class as Phase A6
   (SuidHunt) and audit-2 Gap #10 (SshHijack): `HttpsExfilCampaign` and
