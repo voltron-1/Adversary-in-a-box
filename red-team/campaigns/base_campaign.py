@@ -11,6 +11,7 @@ import logging.handlers
 import os
 import shutil
 import socket
+import tempfile
 import time
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -105,7 +106,16 @@ class BaseCampaign(abc.ABC):
         those paths only.
         """
         evidence_dir = os.environ.get("EVIDENCE_DIR", "/evidence")
-        os.makedirs(evidence_dir, exist_ok=True)
+        try:
+            os.makedirs(evidence_dir, exist_ok=True)
+        except OSError:
+            # The default /evidence is only writable inside the lab
+            # containers (which bind-mount it). On a bare `unittest` run or
+            # a dev box -- e.g. /evidence resolves to an unwritable drive
+            # root on Windows -- fall back to a temp dir so artifact-writing
+            # campaigns still work. The fallback never triggers in the lab.
+            evidence_dir = os.path.join(tempfile.gettempdir(), "aib-evidence")
+            os.makedirs(evidence_dir, exist_ok=True)
         path = os.path.join(evidence_dir, filename)
         with open(path, "w") as f:
             f.write(content)
