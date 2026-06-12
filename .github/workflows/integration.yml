@@ -110,14 +110,25 @@ jobs:
       # importable saved objects against the running Kibana 8.13 -- not
       # just static JSON.
       run: |
+        # Reach Kibana from inside a lab-net container (kibana:5601), the
+        # same way the tests reach ES/scoreboard -- host :5601 isn't reliably
+        # published on the runner. Copy each NDJSON into scoreboard (it has
+        # curl) and POST it to the saved_objects API.
+        for i in $(seq 1 18); do
+          up=$(docker compose exec -T scoreboard curl -sm10 -o /dev/null -w '%{http_code}' http://kibana:5601/api/status 2>/dev/null || true)
+          echo "kibana /api/status -> [$up]"; [ "$up" = "200" ] && break; sleep 5
+        done
         fail=
         for f in siem/kibana/dashboards/*.ndjson; do
-          echo "=== importing $f ==="
-          resp=$(curl -s -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" \
-                   -H "kbn-xsrf: true" --form "file=@${f};type=application/ndjson" || true)
+          base=$(basename "$f")
+          echo "=== importing $base ==="
+          docker compose cp "$f" scoreboard:/tmp/"$base"
+          resp=$(docker compose exec -T scoreboard \
+                   curl -s -X POST "http://kibana:5601/api/saved_objects/_import?overwrite=true" \
+                     -H "kbn-xsrf: true" --form "file=@/tmp/${base};type=application/ndjson" || true)
           echo "$resp"
           echo "$resp" | grep -q '"success":true' \
-            || { echo "::error::Kibana import failed for $f"; fail=1; }
+            || { echo "::error::Kibana import failed for $base"; fail=1; }
         done
         if [ -n "$fail" ]; then exit 1; fi
         echo "[kibana] all dashboards imported successfully"
