@@ -166,5 +166,51 @@ class TestDocFreshness(unittest.TestCase):
         )
 
 
+# A Coverage Matrix row in docs/mitre-attack-map.md is the only 5-column
+# row carrying both a technique ID and a backticked campaign + module, e.g.
+# | Persistence | T1053.003 | Scheduled Task/Job: Cron | `persistence` | `cron_backdoor.py` |
+_MAP_ROW = re.compile(
+    r"^\|[^|]+\|\s*(T\d{4}(?:\.\d{3})?)\s*\|[^|]+\|\s*`([^`]+)`\s*\|\s*`[^`]+`\s*\|",
+    re.MULTILINE,
+)
+
+
+class TestMitreMapFreshness(unittest.TestCase):
+    """audit-4 G3c: docs/mitre-attack-map.md must mirror runner.CAMPAIGNS.
+
+    Before this guard the map omitted 4 techniques and mis-attributed 4
+    others to the wrong campaign (it told students `--campaign lateral`
+    was SSH hijacking when that's Pass-the-Hash). Parse the Coverage
+    Matrix and assert it equals runner.TECHNIQUE_MAP so it can't drift.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.environ.setdefault("LOG_DIR", tempfile.gettempdir())
+        sys.path.insert(0, str(REPO_ROOT / "red-team"))
+        import runner  # noqa: PLC0415
+
+        cls.runner = runner
+        doc = _read(REPO_ROOT / "docs" / "mitre-attack-map.md")
+        cls.doc_map = {tech: campaign for tech, campaign in _MAP_ROW.findall(doc)}
+
+    def test_coverage_matrix_parses(self) -> None:
+        # Guards against a format change silently emptying the comparison.
+        self.assertGreaterEqual(len(self.doc_map), 10)
+
+    def test_doc_matches_runner_technique_map(self) -> None:
+        self.assertEqual(
+            self.doc_map,
+            dict(self.runner.TECHNIQUE_MAP),
+            "docs/mitre-attack-map.md is out of sync with runner.CAMPAIGNS — "
+            "regenerate the Coverage Matrix to match TECHNIQUE_MAP.",
+        )
+
+    def test_every_real_campaign_is_documented(self) -> None:
+        documented = set(self.doc_map.values())
+        registered = {name for name, cfg in self.runner.CAMPAIGNS.items() if cfg.get("module")}
+        self.assertEqual(documented, registered)
+
+
 if __name__ == "__main__":
     unittest.main()
