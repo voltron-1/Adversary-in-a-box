@@ -56,15 +56,12 @@ jobs:
     - name: Prepare .env (skip egress preflight, enable IR profile)
       run: |
         cp .env.example .env
-        # audit-4 G3b: IR is opt-in by default now. The integration suite
-        # exercises the response/playbook path (test_response_score_rises_*),
-        # so it needs the blue-team IR container -- enable it explicitly.
-        # Also enable `pki` so the G3a one-shot CA bootstrap is verified live.
-        # Set it in the environment (not .env) so EVERY `docker compose`
-        # invocation in this job -- start.sh up AND the verify-step
-        # logs/exec -- sees the same active profiles. (Env overrides .env,
-        # which ships COMPOSE_PROFILES= empty after G3b.)
-        echo "COMPOSE_PROFILES=ir,pki" >> "$GITHUB_ENV"
+        # audit-4 G3b: IR is opt-in by default now (.env.example ships
+        # COMPOSE_PROFILES= empty). The integration suite needs the blue-team
+        # IR container (test_response_score_rises_*) and the pki profile (the
+        # G3a CA-bootstrap check below). Rewrite the line deterministically --
+        # start.sh sources .env, so this must live in .env, not the job env.
+        sed -i 's/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=ir,pki/' .env
         # The runner is on the public internet -- the preflight would
         # refuse to start. Air-gap is enforced via lab-net internal:true
         # at the network layer, which still applies.
