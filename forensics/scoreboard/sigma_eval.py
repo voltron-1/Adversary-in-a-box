@@ -55,7 +55,7 @@ def _selection_matches(selection: Any, event: str) -> bool:
     return any(str(kw).lower() in low for kw in selection)
 
 
-def rule_matches(rule: dict, event: str) -> bool:
+def rule_matches(rule: dict[str, Any], event: str) -> bool:
     """Evaluate a keyword-only Sigma rule against the event text.
 
     Supports a single top-level operator: `a and b ...`, `a or b ...`, or a
@@ -93,7 +93,7 @@ def rule_matches(rule: dict, event: str) -> bool:
     return all(results) if require_all else any(results)
 
 
-def load_rules(sigma_dir: str | os.PathLike[str] | None = None) -> list[dict]:
+def load_rules(sigma_dir: str | os.PathLike[str] | None = None) -> list[dict[str, Any]]:
     """Load every *.yml Sigma rule from sigma_dir. Returns [] (with a warning)
     if the directory is missing, so a misconfigured mount degrades to "no
     Sigma detections" rather than crashing the scoreboard."""
@@ -103,7 +103,7 @@ def load_rules(sigma_dir: str | os.PathLike[str] | None = None) -> list[dict]:
             "Sigma rules dir %s not found -- no Sigma detections will be scored", directory
         )
         return []
-    rules: list[dict] = []
+    rules: list[dict[str, Any]] = []
     for path in sorted(directory.glob("*.yml")):
         try:
             rule = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -116,7 +116,7 @@ def load_rules(sigma_dir: str | os.PathLike[str] | None = None) -> list[dict]:
     return rules
 
 
-def matched_rule(event: str, rules: list[dict]) -> str | None:
+def matched_rule(event: str, rules: list[dict[str, Any]]) -> str | None:
     """Return the source filename of the first rule that matches the event,
     else None. Used by the scorer to decide whether a syslog advisory counts
     as a Sigma detection."""
