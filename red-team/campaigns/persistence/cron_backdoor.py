@@ -16,7 +16,9 @@ class CronBackdoorCampaign(BaseCampaign):
     TECHNIQUE_NAME = "Scheduled Task/Job: Cron"
     TACTIC = "Persistence"
 
-    C2_IP = os.environ.get("ATTACKER_IP", "172.20.0.10")
+    # P4: derive from LAB_NET_PREFIX (matching the container's lab-net IP)
+    # instead of a hardcoded default that desyncs under a custom prefix.
+    C2_IP = os.environ.get("ATTACKER_IP") or f"{os.environ.get('LAB_NET_PREFIX', '172.20.0')}.10"
     C2_PORT = os.environ.get("C2_PORT", "4444")
 
     # OQ-1: paths this campaign writes to. Read by runner.py --cleanup-all

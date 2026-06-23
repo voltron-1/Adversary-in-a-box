@@ -178,3 +178,42 @@ Edit `.env` and remap the conflicting ports in `docker-compose.yml`.
 ```bash
 docker compose logs -f <service-name>
 ```
+
+---
+
+## Maintaining Pinned Images
+
+All container images are pinned for reproducibility (P3): the ELK stack, Zeek,
+and MySQL pin a version tag, while the two previously-floating images are pinned
+to an immutable digest:
+
+| Image | Where | Pinned to |
+|-------|-------|-----------|
+| `jasonish/suricata` | `docker-compose.yml` (suricata) | manifest-list digest of `:latest` @ 2026-06-22 |
+| `kalilinux/kali-rolling` | `red-team/Dockerfile` | manifest-list digest of `:latest` @ 2026-06-22 |
+
+**Why digests for these two:** Suricata's `:latest` and Kali's rolling tag move
+continuously; a digest freezes the exact image so a rebuild can't silently change
+the EVE-JSON schema or the attacker toolchain mid-course.
+
+**To bump (do this deliberately, then re-validate):**
+```bash
+# 1. Find the current MANIFEST-LIST (multi-arch index) digest of the tag.
+#    Use imagetools, NOT `docker inspect .RepoDigests` -- the latter returns
+#    the single-arch digest for your local machine, which pins everyone else
+#    to your architecture and breaks the other (e.g. arm digest -> amd64 CI
+#    fails with `exec /bin/sh: exec format error`).
+docker buildx imagetools inspect jasonish/suricata:latest --format '{{.Manifest.Digest}}'
+
+# 2. (Suricata) identify the version you're moving to
+docker run --rm --entrypoint suricata jasonish/suricata:latest -V
+
+# 3. Replace the @sha256:... in docker-compose.yml / red-team/Dockerfile
+# 4. Re-run the full integration workflow before merging — a Suricata major
+#    bump can change EVE fields the Logstash pipeline parses:
+#       .github/workflows/integration.yml  (or: gh workflow run integration.yml)
+```
+
+> Note: pinning the Kali **base** digest does not freeze the `apt-get install`
+> layer in `red-team/Dockerfile`, which still pulls from live Kali repos. Full
+> toolchain reproducibility would require an apt snapshot mirror (out of scope).
