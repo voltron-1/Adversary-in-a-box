@@ -34,6 +34,9 @@ volumes:
   kibana-data:
   # Phase B2a: shared between zeek (writer) and logstash (reader).
   zeek-logs:
+  # P5: persistent Logstash data dir (the file-input sincedb lives here) so a
+  # logstash restart doesn't replay logs and double-count events into ES.
+  logstash-data:
   # NOTE: evidence is intentionally NOT a named volume. We bind-mount
   # ./evidence into /evidence in every container that produces or reads
   # forensic artifacts. That keeps the host-side chain-of-custody workflow
@@ -59,6 +62,11 @@ services:
       - TARGET_DB=${TARGET_DB_HOST:-victim-db}
       - TARGET_MAIL=${TARGET_MAIL_HOST:-victim-mail}
       - SIEM_HOST=${SIEM_HOST:-elasticsearch}
+      # P4: stamp the attacker source.ip to match this container's actual
+      # lab-net address. Without it the MITRE tagger fell back to a hardcoded
+      # 172.20.0.10, so under a custom LAB_NET_PREFIX every attack doc carried
+      # the wrong source.ip and IP-pivoting dashboards/correlation missed it.
+      - ATTACKER_IP=${LAB_NET_PREFIX:-172.20.0}.10
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - victim-web
@@ -167,7 +175,12 @@ services:
   # student-attacker containers (verified by scripts/safety/egress_test.sh).
   # ---------------------------------------------------------------------------
   suricata:
-    image: jasonish/suricata:latest
+    # P3 (image pinning): pinned to the digest jasonish/suricata:latest
+    # resolved to on 2026-06-22 (behavior-preserving freeze of the floating
+    # tag). Identify the version with
+    # `docker run --rm --entrypoint suricata <ref> -V`; bump per the
+    # image-pinning note in docs/setup-guide.md.
+    image: jasonish/suricata@sha256:6b13b0973b2849332a17cd58ce3d369e0d5652f4ca03701aa85aac0c5dbcd755
     hostname: suricata
     network_mode: "host"
     cap_add:
@@ -307,6 +320,10 @@ services:
       # on Docker Desktop (the old host bind /var/log/zeek doesn't exist
       # on Mac/Windows VMs).
       - zeek-logs:/zeek-logs:ro
+      # P5: persist Logstash state (incl. the file-input sincedb) across
+      # restarts so re-reading eve.json / zeek logs from byte 0 no longer
+      # duplicates every event into ES and corrupts MTTD/MTTA scoring.
+      - logstash-data:/usr/share/logstash/data
     environment:
       - LS_JAVA_OPTS=-Xms512m -Xmx512m
     # Phase C6: heap 512m; cap container at 1G for pipeline buffers.

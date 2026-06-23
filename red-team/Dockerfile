@@ -1,4 +1,10 @@
-FROM kalilinux/kali-rolling:latest
+# P3 (image pinning): pinned to the immutable digest that
+# kalilinux/kali-rolling:latest resolved to on 2026-06-22, so rebuilds use a
+# fixed base rootfs instead of a moving rolling tag. NOTE: the apt-get install
+# below still pulls from the live Kali repos, so the package layer is not fully
+# frozen -- the digest pins the base image only. Bump per the image-pinning
+# note in docs/setup-guide.md.
+FROM kalilinux/kali-rolling@sha256:59f097895c5a49cdeaed2ea59330057fb7c6bd29c35b1b6bae9f0d35a7c48be7
 
 LABEL maintainer="Adversary-in-a-Box Lab"
 LABEL description="Red team attacker container — Kali Linux base"
