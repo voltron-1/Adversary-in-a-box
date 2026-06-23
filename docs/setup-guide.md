@@ -189,8 +189,8 @@ to an immutable digest:
 
 | Image | Where | Pinned to |
 |-------|-------|-----------|
-| `jasonish/suricata` | `docker-compose.yml` (suricata) | digest of `:latest` @ 2026-06-22 |
-| `kalilinux/kali-rolling` | `red-team/Dockerfile` | digest of `:latest` @ 2026-06-22 |
+| `jasonish/suricata` | `docker-compose.yml` (suricata) | manifest-list digest of `:latest` @ 2026-06-22 |
+| `kalilinux/kali-rolling` | `red-team/Dockerfile` | manifest-list digest of `:latest` @ 2026-06-22 |
 
 **Why digests for these two:** Suricata's `:latest` and Kali's rolling tag move
 continuously; a digest freezes the exact image so a rebuild can't silently change
@@ -198,9 +198,12 @@ the EVE-JSON schema or the attacker toolchain mid-course.
 
 **To bump (do this deliberately, then re-validate):**
 ```bash
-# 1. Find the current digest of the tag you want
-docker pull jasonish/suricata:latest
-docker inspect --format '{{index .RepoDigests 0}}' jasonish/suricata:latest
+# 1. Find the current MANIFEST-LIST (multi-arch index) digest of the tag.
+#    Use imagetools, NOT `docker inspect .RepoDigests` -- the latter returns
+#    the single-arch digest for your local machine, which pins everyone else
+#    to your architecture and breaks the other (e.g. arm digest -> amd64 CI
+#    fails with `exec /bin/sh: exec format error`).
+docker buildx imagetools inspect jasonish/suricata:latest --format '{{.Manifest.Digest}}'
 
 # 2. (Suricata) identify the version you're moving to
 docker run --rm --entrypoint suricata jasonish/suricata:latest -V

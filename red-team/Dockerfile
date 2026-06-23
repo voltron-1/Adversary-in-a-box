@@ -1,10 +1,13 @@
-# P3 (image pinning): pinned to the immutable digest that
-# kalilinux/kali-rolling:latest resolved to on 2026-06-22, so rebuilds use a
-# fixed base rootfs instead of a moving rolling tag. NOTE: the apt-get install
-# below still pulls from the live Kali repos, so the package layer is not fully
-# frozen -- the digest pins the base image only. Bump per the image-pinning
-# note in docs/setup-guide.md.
-FROM kalilinux/kali-rolling@sha256:59f097895c5a49cdeaed2ea59330057fb7c6bd29c35b1b6bae9f0d35a7c48be7
+# P3 (image pinning): pinned to the immutable *manifest-list* (multi-arch
+# index) digest that kalilinux/kali-rolling:latest resolved to on 2026-06-22,
+# so rebuilds use a fixed base rootfs instead of a moving rolling tag while
+# still resolving per-platform (amd64 in CI, arm64 on Apple Silicon). Pinning
+# an arch-specific digest instead would break the other architecture with
+# `exec /bin/sh: exec format error`. NOTE: the apt-get install below still
+# pulls from the live Kali repos, so the package layer is not fully frozen --
+# the digest pins the base image only. Bump per the image-pinning note in
+# docs/setup-guide.md.
+FROM kalilinux/kali-rolling@sha256:359c8d8ea58feebdd2c4be89e5dcae97ac37fc7e143f39ef6235bcd804ec0d74
 
 LABEL maintainer="Adversary-in-a-Box Lab"
 LABEL description="Red team attacker container — Kali Linux base"

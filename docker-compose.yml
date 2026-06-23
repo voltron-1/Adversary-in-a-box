@@ -175,12 +175,13 @@ services:
   # student-attacker containers (verified by scripts/safety/egress_test.sh).
   # ---------------------------------------------------------------------------
   suricata:
-    # P3 (image pinning): pinned to the digest jasonish/suricata:latest
-    # resolved to on 2026-06-22 (behavior-preserving freeze of the floating
-    # tag). Identify the version with
+    # P3 (image pinning): pinned to the multi-arch *manifest-list* (index)
+    # digest jasonish/suricata:latest resolved to on 2026-06-22 (behavior-
+    # preserving freeze of the floating tag that still resolves per-platform --
+    # amd64 in CI, arm64 on Apple Silicon). Identify the version with
     # `docker run --rm --entrypoint suricata <ref> -V`; bump per the
     # image-pinning note in docs/setup-guide.md.
-    image: jasonish/suricata@sha256:6b13b0973b2849332a17cd58ce3d369e0d5652f4ca03701aa85aac0c5dbcd755
+    image: jasonish/suricata@sha256:47965a058991aefbcfcd3fc6daea875c08470258af640c09c41faa466ee0b6ce
     hostname: suricata
     network_mode: "host"
     cap_add:
