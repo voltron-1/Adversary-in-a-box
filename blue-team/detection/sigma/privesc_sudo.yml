@@ -14,12 +14,16 @@ logsource:
     product: linux
     service: syslog  # audit-4 G2b: retargeted from auth to the live syslog ingest path
 detection:
+    # P1: these are literal substrings (not regex). The earlier 'sudo: .*COMMAND='
+    # form embedded a regex '.*' that matches neither real sudo syslog nor the
+    # campaign advisory under a substring matcher, leaving this selection dead;
+    # the 'COMMAND=/usr/bin/<gtfobin>' token is the discriminating literal.
     keywords:
-        - 'sudo: .*COMMAND=/usr/bin/find'
-        - 'sudo: .*COMMAND=/usr/bin/vim'
-        - 'sudo: .*COMMAND=/usr/bin/python3'
-        - 'sudo: .*COMMAND=/usr/bin/awk'
-        - 'sudo: .*COMMAND=/usr/bin/perl'
+        - 'COMMAND=/usr/bin/find'
+        - 'COMMAND=/usr/bin/vim'
+        - 'COMMAND=/usr/bin/python3'
+        - 'COMMAND=/usr/bin/awk'
+        - 'COMMAND=/usr/bin/perl'
     sudo_nopasswd:
         - 'sudo -l'
         - 'NOPASSWD'

@@ -62,8 +62,13 @@ alert tcp $HOME_NET any -> $EXTERNAL_NET 4444 (msg:"ET MALWARE Metasploit Defaul
 
 # ---------------------------------------------------------------------------
 # Phase B B1a -- T1557 Adversary-in-the-Middle (lab simulation)
-# Container bridges suppress real ARP frames; rule keys on the synthetic
-# spoof advisory that MitmCampaign writes (no real packets to inspect).
+# PRODUCTION-REFERENCE ONLY -- does NOT fire on the lab simulation (P2).
+# MitmCampaign emits its "LAB-SIMULATION: attacker" marker over the UDP syslog
+# advisory (logstash:5514), not as a tcp payload, so this tcp rule never
+# matches in-lab. The LIVE, SCORED detection for T1557 is the paired Sigma rule
+# mitm_arp_spoof.yml, which the scoreboard now evaluates against the syslog-*
+# advisory (P1). Kept as a reference for what the technique looks like on a real
+# wire.
 # ---------------------------------------------------------------------------
 alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET MITM Lab Simulation ARP Spoof Advisory"; content:"LAB-SIMULATION: attacker"; classtype:policy-violation; sid:1000080; rev:1;)
 
@@ -76,15 +81,24 @@ alert http any any -> $HOME_NET any (msg:"ET BRUTE_FORCE HTTP Login Burst"; flow
 
 # ---------------------------------------------------------------------------
 # Phase B B1c -- T1204 User Execution / Malware Drop (EICAR marker)
-# Fires on the EICAR test string crossing the wire (the lab campaign
-# also writes it to disk; this rule covers the network-transport path).
+# PRODUCTION-REFERENCE ONLY -- does NOT fire on the lab simulation (P2).
+# MalwareDropCampaign writes EICAR to disk (/tmp/lab_malware_drop.eicar) and
+# emits the marker over the UDP syslog advisory, never as a tcp payload on the
+# wire, so this rule does not match in-lab. The LIVE, SCORED detection for T1204
+# is the paired Sigma rule malware_drop_eicar.yml, evaluated by the scoreboard
+# against syslog-* (P1). Kept as a reference for the network-transport path a
+# real drop would take.
 # ---------------------------------------------------------------------------
 alert tcp any any -> $HOME_NET any (msg:"ET MALWARE EICAR Test Marker In Transit"; content:"EICAR-STANDARD-ANTIVIRUS-TEST-FILE"; classtype:trojan-activity; sid:1000100; rev:1;)
 
 # ---------------------------------------------------------------------------
 # Phase B B1d -- T1486 Data Encrypted for Impact (ransomware sim)
-# Network-side signal: ransom_note string in any HTTP/SMB payload. Most
-# ransomware detection is filesystem-side -- this rule catches lateral
-# distribution of the note (e.g. attacker stuffing it into an SMB share).
+# PRODUCTION-REFERENCE ONLY -- does NOT fire on the lab simulation (P2).
+# RansomwareSimCampaign renames decoys + writes the note to disk and emits the
+# marker over the UDP syslog advisory; the note text never crosses the wire as a
+# tcp payload, so this rule does not match in-lab. The LIVE, SCORED detection for
+# T1486 is the paired Sigma rule impact_ransomware.yml, evaluated by the
+# scoreboard against syslog-* (P1). Kept as a reference for lateral distribution
+# of the note (e.g. over an SMB share) in a real incident.
 # ---------------------------------------------------------------------------
 alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET RANSOMWARE Lab Ransom Note Marker"; content:"LAB SIMULATION -- NO ACTUAL ENCRYPTION"; classtype:trojan-activity; sid:1000110; rev:1;)

@@ -13,7 +13,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py scorer.py ./
+COPY app.py scorer.py sigma_eval.py ./
 COPY templates ./templates
 
 RUN mkdir -p /evidence
