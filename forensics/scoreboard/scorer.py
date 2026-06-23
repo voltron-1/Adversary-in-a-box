@@ -18,9 +18,14 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+import sigma_eval  # P1: scoreboard-side Sigma evaluator (sibling module)
+
 log = logging.getLogger(__name__)
 
 ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "http://elasticsearch:9200")
+# P1: directory of deployed Sigma rules the scoreboard evaluates against the
+# syslog-* advisories. Bind-mounted from blue-team/detection/sigma in the lab.
+SIGMA_RULES_DIR = os.environ.get("SIGMA_RULES_DIR", "/app/sigma")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -77,8 +82,12 @@ def score_tier(elapsed_seconds: float, thresholds: list[TierRow]) -> tuple[float
 class Scorer:
     """Computes red/blue team scores from ELK data using MTTD/MTTA tiers."""
 
-    def __init__(self, es_url: str | None = None) -> None:
+    def __init__(self, es_url: str | None = None, sigma_rules_dir: str | None = None) -> None:
         self.es_url = es_url or ELASTICSEARCH_URL
+        # P1: load the deployed Sigma rules once per scorer (not per _correlate,
+        # which runs twice per page render). Evaluated against the syslog-*
+        # advisories so the otherwise-inert Sigma layer produces scored detections.
+        self._sigma_rules = sigma_eval.load_rules(sigma_rules_dir or SIGMA_RULES_DIR)
 
     # ------------------------------------------------------------------ ES helpers
     def _es_search(
@@ -118,8 +127,34 @@ class Scorer:
         ends = self._hits("red-team-events-*", {"match": {"event_type": "campaign_end"}})
         alerts = self._hits("suricata-*", {"match": {"event_type": "alert"}})
         responses = self._hits("ir-events-*", {"match": {"event_type": "playbook_complete"}})
-        alert_ts = sorted(t for t in (_parse_ts(a.get("@timestamp")) for a in alerts) if t)
+        alert_ts = [t for t in (_parse_ts(a.get("@timestamp")) for a in alerts) if t]
+        # P1: the Sigma layer was otherwise inert -- evaluate the deployed rules
+        # against the campaign advisories in syslog-* and treat each match as a
+        # detection, so host-/sim-only techniques (sudo, cron, ransomware, MITM)
+        # produce scored detections instead of always Missing. These timestamps
+        # flow through the same window-correlation + false-positive logic as the
+        # Suricata alerts.
+        alert_ts = sorted(alert_ts + self._sigma_detection_ts())
         return starts, ends, alert_ts, responses
+
+    def _sigma_detection_ts(self) -> list[float]:
+        """P1: timestamps of syslog-* docs that match a deployed Sigma rule.
+
+        Campaign advisories (BaseCampaign.emit_syslog_advisory) land in
+        syslog-* carrying their rule's keywords; matching them here is what
+        turns the otherwise-inert Sigma ruleset into scored detections.
+        Degrades to [] if the rules dir is unmounted or syslog-* is empty.
+        """
+        if not self._sigma_rules:
+            return []
+        out: list[float] = []
+        for doc in self._hits("syslog-*", {"match_all": {}}):
+            text = f"{doc.get('message', '')} {doc.get('syslog_message', '')}"
+            if sigma_eval.matched_rule(text, self._sigma_rules):
+                ts = _parse_ts(doc.get("@timestamp"))
+                if ts is not None:
+                    out.append(ts)
+        return out
 
     @staticmethod
     def _windows(starts: list[dict[str, Any]]) -> list[tuple[str, float, float]]:

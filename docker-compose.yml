@@ -386,6 +386,9 @@ services:
     volumes:
       - ./evidence:/evidence
       - ./forensics:/app/forensics
+      # P1: mount the deployed Sigma rules read-only so the scoreboard can
+      # evaluate them against syslog-* advisories (scorer._sigma_detection_ts).
+      - ./blue-team/detection/sigma:/app/sigma:ro
     # Phase C7: Flask returns 200 on / once the Scorer can talk to ES.
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:5002/api/scores || exit 1"]
@@ -395,6 +398,8 @@ services:
       start_period: 15s
     environment:
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://elasticsearch:9200}
+      # P1: where scorer.py loads the Sigma rules from (matches the mount above).
+      - SIGMA_RULES_DIR=${SIGMA_RULES_DIR:-/app/sigma}
       - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}
     depends_on:
       - elasticsearch
