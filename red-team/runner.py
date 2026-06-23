@@ -228,6 +228,17 @@ def list_campaigns():
     console.print(table)
 
 
+def _report_emit_health():
+    """P4: surface silent SIEM-emission failures at the end of a run so a
+    green campaign result doesn't mask telemetry that never reached ES."""
+    if tagger.emit_failures:
+        console.print(
+            f"[bold yellow]⚠ {tagger.emit_failures}/{tagger.emit_attempts} SIEM "
+            "emissions failed[/bold yellow] — this run is unlikely to be scored. "
+            "Check that Elasticsearch is reachable from the red-team container."
+        )
+
+
 def run_campaign(campaign, technique, target, dry_run):
     """Run a red team campaign or specific MITRE technique."""
     print_banner()
@@ -257,11 +268,21 @@ def run_campaign(campaign, technique, target, dry_run):
         console.print("[yellow]DRY RUN — no actions will be executed[/yellow]")
         return
 
+    # P4: warn early if the SIEM is unreachable so the operator knows this
+    # run's attack telemetry won't be ingested or scored (emission is
+    # best-effort and would otherwise fail silently).
+    if not tagger.preflight():
+        console.print(
+            f"[yellow]⚠ SIEM unreachable at {tagger.SIEM_HOST}:{tagger.SIEM_PORT} — "
+            "attack telemetry will not be scored. Continuing anyway.[/yellow]"
+        )
+
     if campaign == "full-killchain":
         _run_full_killchain(target)
-        return
+    else:
+        _run_single_campaign(campaign, cfg, target)
 
-    _run_single_campaign(campaign, cfg, target)
+    _report_emit_health()
 
 
 def _run_single_campaign(name, cfg, target_override=None):

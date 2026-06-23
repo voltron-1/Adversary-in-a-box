@@ -5,8 +5,11 @@ Tags campaign events with ATT&CK metadata and emits enriched events
 to the ELK SIEM via HTTP for real-time detection and correlation.
 """
 
+import logging
 import os
 from datetime import UTC, datetime
+
+log = logging.getLogger(__name__)
 
 # MITRE ATT&CK technique metadata index
 TECHNIQUE_METADATA = {
@@ -109,13 +112,28 @@ TECHNIQUE_METADATA = {
 }
 
 
+def _attacker_ip() -> str:
+    """Attacker source IP stamped on emitted docs. Prefer an explicit
+    ATTACKER_IP; otherwise derive it from LAB_NET_PREFIX so it tracks the
+    red-team container's real lab-net address instead of a hardcoded default
+    that breaks IP-pivoting under a custom prefix (P4)."""
+    return os.environ.get("ATTACKER_IP") or f"{os.environ.get('LAB_NET_PREFIX', '172.20.0')}.10"
+
+
 class MitreTagger:
     """
     Tags campaign events with ATT&CK metadata and ships them to the SIEM.
     """
 
-    SIEM_HOST = os.environ.get("SIEM_HOST", "172.20.0.50")
-    SIEM_PORT = int(os.environ.get("SIEM_PORT", "9200"))
+    def __init__(self) -> None:
+        # Resolve the SIEM target per-instance (not at import) so callers/tests
+        # that set the environment after import still take effect (P4).
+        self.SIEM_HOST = os.environ.get("SIEM_HOST", "172.20.0.50")
+        self.SIEM_PORT = int(os.environ.get("SIEM_PORT", "9200"))
+        # P4: track SIEM emission outcomes so the runner can surface silent
+        # telemetry loss instead of reporting a green run while ES was down.
+        self.emit_attempts = 0
+        self.emit_failures = 0
 
     def get_metadata(self, technique_id: str) -> dict:
         """Return ATT&CK metadata for a given technique ID."""
@@ -159,7 +177,7 @@ class MitreTagger:
             "@timestamp": datetime.now(UTC).isoformat(),
             "event.kind": "alert",
             "event.category": "intrusion_detection",
-            "source.ip": os.environ.get("ATTACKER_IP", "172.20.0.10"),
+            "source.ip": _attacker_ip(),
         }
 
     def _index_name(self) -> str:
@@ -168,16 +186,21 @@ class MitreTagger:
         return f"red-team-events-{datetime.now(UTC).strftime('%Y.%m.%d')}"
 
     def _post(self, doc: dict) -> dict:
-        """POST a doc to the red-team-events index. Non-fatal on failure."""
+        """POST a doc to the red-team-events index. Non-fatal on failure, but
+        P4: record the outcome so silent telemetry loss is observable instead
+        of a green run masking an unreachable SIEM."""
         url = f"http://{self.SIEM_HOST}:{self.SIEM_PORT}/{self._index_name()}/_doc"
+        self.emit_attempts += 1
         try:
             import requests  # lazy: lets this module import without the dep
 
             resp = requests.post(url, json=doc, timeout=3)
             resp.raise_for_status()
-        except Exception:
-            # Non-fatal — SIEM may not be available during standalone testing
-            pass
+        except Exception as exc:  # noqa: BLE001 -- emission is best-effort
+            # Non-fatal — SIEM may be unavailable — but count it so the runner
+            # can warn the operator that this run won't be scored.
+            self.emit_failures += 1
+            log.warning("SIEM emission to %s failed: %s", url, exc)
         return doc
 
     def tag_and_emit(self, technique_id: str, event: dict, campaign_id: str | None = None):
@@ -197,7 +220,18 @@ class MitreTagger:
             "campaign_id": campaign_id,
             "event_type": event_type,
             "@timestamp": datetime.now(UTC).isoformat(),
-            "source.ip": os.environ.get("ATTACKER_IP", "172.20.0.10"),
+            "source.ip": _attacker_ip(),
             **(extra or {}),
         }
         return self._post(doc)
+
+    def preflight(self) -> bool:
+        """Best-effort SIEM reachability check (P4). True if Elasticsearch
+        answers on its root endpoint; never raises."""
+        try:
+            import requests
+
+            resp = requests.get(f"http://{self.SIEM_HOST}:{self.SIEM_PORT}/", timeout=2)
+            return resp.ok
+        except Exception:
+            return False
