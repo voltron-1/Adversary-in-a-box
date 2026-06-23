@@ -113,10 +113,16 @@ class TestSigmaDetectionsScore(unittest.TestCase):
 
     def _stub_es(self, syslog_docs):
         """Stub Scorer._es_search to serve one campaign window + given syslog."""
-        start = {"campaign_id": "cid1", "event_type": "campaign_start",
-                 "@timestamp": "2026-06-22T10:00:00+00:00"}
-        end = {"campaign_id": "cid1", "event_type": "campaign_end",
-               "@timestamp": "2026-06-22T10:00:30+00:00"}
+        start = {
+            "campaign_id": "cid1",
+            "event_type": "campaign_start",
+            "@timestamp": "2026-06-22T10:00:00+00:00",
+        }
+        end = {
+            "campaign_id": "cid1",
+            "event_type": "campaign_end",
+            "@timestamp": "2026-06-22T10:00:30+00:00",
+        }
 
         def fake(index, body, default):
             if index.startswith("red-team-events"):
@@ -131,10 +137,14 @@ class TestSigmaDetectionsScore(unittest.TestCase):
 
     def test_sudo_only_syslog_is_now_a_scored_detection(self):
         # A sudo advisory inside the window, NO Suricata alert -> used to Miss.
-        self._stub_es([
-            {"syslog_message": ADVISORIES["privesc_sudo.yml"],
-             "@timestamp": "2026-06-22T10:00:05+00:00"}
-        ])
+        self._stub_es(
+            [
+                {
+                    "syslog_message": ADVISORIES["privesc_sudo.yml"],
+                    "@timestamp": "2026-06-22T10:00:05+00:00",
+                }
+            ]
+        )
         blue = self.s.get_blue_team_score()
         red = self.s.get_red_team_score()
         self.assertEqual(blue["misses"], 0, "sudo window should no longer be a Miss")

@@ -49,7 +49,7 @@ def _selection_matches(selection: Any, event: str) -> bool:
     never match (kept honest about scope)."""
     if isinstance(selection, dict):
         return False
-    if not isinstance(selection, (list, tuple)):
+    if not isinstance(selection, list | tuple):
         selection = [selection]
     low = event.lower()
     return any(str(kw).lower() in low for kw in selection)
@@ -99,9 +99,7 @@ def load_rules(sigma_dir: str | os.PathLike[str] | None = None) -> list[dict[str
     Sigma detections" rather than crashing the scoreboard."""
     directory = Path(sigma_dir or DEFAULT_SIGMA_DIR)
     if not directory.is_dir():
-        log.warning(
-            "Sigma rules dir %s not found -- no Sigma detections will be scored", directory
-        )
+        log.warning("Sigma rules dir %s not found -- no Sigma detections will be scored", directory)
         return []
     rules: list[dict[str, Any]] = []
     for path in sorted(directory.glob("*.yml")):
