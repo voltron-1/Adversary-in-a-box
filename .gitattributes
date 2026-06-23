@@ -1,0 +1,6 @@
+# Normalize line endings. Without this, Windows-side editors (the lab is often
+# checked out under WSL2) rewrite tracked files to CRLF, producing whole-file
+# "100% churn" diffs and easy-to-miss CRLF commits. `text=auto` lets git detect
+# text vs binary; `eol=lf` forces LF in the working tree and the repo so shell
+# scripts, Python, and YAML stay LF on every platform.
+* text=auto eol=lf
