@@ -16,7 +16,8 @@ import os
 import socket
 import sys
 import time
-from urllib.parse import urlparse
+from typing import NoReturn
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 import click
 from rich.console import Console
@@ -321,19 +322,79 @@ def _is_lab_target(host: str) -> bool:
     return any(ip in net for net in nets)
 
 
-def _assert_target_allowed(target: str) -> None:
-    """Fail closed unless target resolves into the lab. Exits non-zero on a
-    rejected target so an out-of-scope attack never reaches a campaign."""
+def _resolve_host_ip(host: str):
+    """Parse a literal or resolve a hostname to an ipaddress, exactly once.
+    Returns None if the host is empty or cannot be resolved."""
+    if not host:
+        return None
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            return ipaddress.ip_address(socket.gethostbyname(host))
+        except (OSError, ValueError):
+            return None
+
+
+def _pin_host_in_target(target: str, ip: str) -> str:
+    """Return `target` with its host component replaced by `ip`, preserving
+    scheme, port, path and query. #145: once the allowlist has resolved and
+    vetted a hostname, the campaign must connect to that exact IP rather than
+    re-resolve (which a short-TTL / rebinding resolver could swap out)."""
+    t = (target or "").strip()
+    # urlsplit/_target_host strip the RFC 3986 brackets off an IPv6 host, so
+    # re-add them when pinning an IPv6 address or the rebuilt netloc is invalid.
+    host = f"[{ip}]" if ":" in ip else ip
+    if "://" in t:
+        parts = urlsplit(t)
+        netloc = f"{host}:{parts.port}" if parts.port is not None else host
+        if parts.username:  # preserve any userinfo
+            cred = parts.username + (f":{parts.password}" if parts.password else "")
+            netloc = f"{cred}@{netloc}"
+        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    if t.startswith("[") and "]" in t:  # bracketed IPv6 literal -- already an IP
+        return t
+    host_part = t.split("/", 1)[0]
+    rest = t[len(host_part) :]  # path, if any
+    if ":" in host_part:
+        return f"{host}:{host_part.split(':', 1)[1]}{rest}"
+    return f"{host}{rest}"
+
+
+def _reject_target(target: str, host: str) -> NoReturn:
+    """Print the out-of-scope refusal and exit non-zero. Never returns -- the
+    NoReturn annotation lets the type checker narrow `ip` to non-None after the
+    rejection branch in _vet_and_pin_target."""
+    prefix = os.environ.get("LAB_NET_PREFIX", "172.20.0")
+    console.print(
+        f"[red]✗ Refusing out-of-scope target '{target}' (host '{host}'). "
+        f"P8 allowlist permits only lab services "
+        f"({', '.join(sorted(LAB_HOSTNAMES))}) or IPs in {prefix}.0/24. "
+        f"Set LAB_NET_PREFIX/QUARANTINE_NET_PREFIX to match your lab.[/red]"
+    )
+    sys.exit(2)
+
+
+def _vet_and_pin_target(target: str) -> str:
+    """Validate `target` against the P8 allowlist and return a connect-safe
+    form. A non-literal hostname is resolved exactly once here and the
+    validated IP is pinned into the returned target (#145, TOCTOU). Lab service
+    names pass by name (in-lab DNS controls them); IP literals are unchanged.
+    Exits non-zero on an out-of-scope target so it never reaches a campaign."""
     host = _target_host(target)
-    if not _is_lab_target(host):
-        prefix = os.environ.get("LAB_NET_PREFIX", "172.20.0")
-        console.print(
-            f"[red]✗ Refusing out-of-scope target '{target}' (host '{host}'). "
-            f"P8 allowlist permits only lab services "
-            f"({', '.join(sorted(LAB_HOSTNAMES))}) or IPs in {prefix}.0/24. "
-            f"Set LAB_NET_PREFIX/QUARANTINE_NET_PREFIX to match your lab.[/red]"
-        )
-        sys.exit(2)
+    if host in LAB_HOSTNAMES:
+        # Intentionally NOT pinned: these names are served only by the lab's
+        # embedded Docker DNS on an `internal: true` network the operator does
+        # not control, so there is no rebinding surface. Pinning them would also
+        # break the pre-DNS validation path (dry-runs / tests where the name
+        # does not resolve). Arbitrary hostnames below ARE resolved and pinned.
+        return target
+    ip = _resolve_host_ip(host)
+    if ip is None or not any(ip in net for net in _lab_networks()):
+        _reject_target(target, host)
+    # Pin the single vetted resolution. For an IP-literal target this is a
+    # no-op (host already equals `ip`); for a hostname it freezes the address.
+    return _pin_host_in_target(target, str(ip))
 
 
 # P8 (R1): the in-lab default web target, used when neither --target nor
@@ -390,12 +451,14 @@ def run_campaign(campaign, technique, target, dry_run):
     # The built-in lab defaults are trusted; only values the operator actually
     # set are checked. full-killchain runs every campaign, so a single sweep
     # here covers the single-campaign and kill-chain paths alike.
+    # #145: vet-and-pin rewrites a vetted hostname to its resolved IP, so the
+    # value the campaign actually dials is the one the allowlist approved.
     if target:
-        _assert_target_allowed(target)
+        target = _vet_and_pin_target(target)
     for var in TARGET_ENV_VARS:
         val = os.environ.get(var)
         if val:
-            _assert_target_allowed(val)
+            os.environ[var] = _vet_and_pin_target(val)
 
     if dry_run:
         console.print("[yellow]DRY RUN — no actions will be executed[/yellow]")

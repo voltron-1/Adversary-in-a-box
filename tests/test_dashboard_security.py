@@ -15,6 +15,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).parent.parent
 BLUE_APP = ROOT / "blue-team" / "dashboard" / "app.py"
@@ -25,30 +26,37 @@ STRONG_KEY = "x7f2" * 12  # 48 chars, not in the insecure denylist
 
 
 def _load(module_name, path, env, extra_path=None):
-    """Load a module fresh with a controlled environment."""
-    saved_env = dict(os.environ)
-    # Apply env: keys with value None are removed.
-    for key, value in env.items():
-        if value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = value
+    """Load a module fresh with a controlled environment.
+
+    Env is applied via mock.patch.dict, which snapshots os.environ and restores
+    it exactly on exit -- including if exec_module raises. This is safer than a
+    manual clear()/update() in a finally (which loses concurrent edits and
+    leaves a half-applied env if the snapshot/restore is interrupted). Keys
+    whose requested value is None are removed for the duration of the load.
+    """
+    overrides = {k: v for k, v in env.items() if v is not None}
+    remove = [k for k, v in env.items() if v is None]
     sys.modules.pop(module_name, None)
     added_path = False
-    try:
-        if extra_path:
-            sys.path.insert(0, str(extra_path))
-            added_path = True
-        spec = importlib.util.spec_from_file_location(module_name, path)
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = mod
-        spec.loader.exec_module(mod)
-        return mod
-    finally:
-        if added_path:
-            sys.path.remove(str(extra_path))
-        os.environ.clear()
-        os.environ.update(saved_env)
+    with mock.patch.dict(os.environ, overrides):
+        for key in remove:
+            os.environ.pop(key, None)
+        try:
+            if extra_path:
+                sys.path.insert(0, str(extra_path))
+                added_path = True
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = mod
+            spec.loader.exec_module(mod)
+            return mod
+        finally:
+            if added_path:
+                sys.path.remove(str(extra_path))
+            # Don't leave a half-initialized module registered if exec_module
+            # raised (e.g. a bad SECRET_KEY): drop the name so the next load
+            # starts clean.
+            sys.modules.pop(module_name, None)
 
 
 class TestSecretKeyEnforcement(unittest.TestCase):
@@ -277,6 +285,133 @@ class TestPlaybookAuth(unittest.TestCase):
             "/api/run-playbook",
             data="not json",
             content_type="text/plain",
+            headers={"X-Auth-Token": "s3cret-token"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+
+class TestInsecureKeyDenylistSync(unittest.TestCase):
+    """#146: the dashboard and scoreboard apps build from separate Docker
+    contexts and cannot share a Python import, so INSECURE_SECRET_KEYS is
+    duplicated. This guard fails CI if the two copies drift apart or if a
+    committed .env.example placeholder is missing from either copy."""
+
+    def _denylist(self, name, path, extra_path=None):
+        mod = _load(name, path, {"SECRET_KEY": STRONG_KEY}, extra_path=extra_path)
+        return set(mod.INSECURE_SECRET_KEYS)
+
+    def _committed_placeholders(self):
+        # The literal values assigned to the secret/token vars in .env.example.
+        wanted = ("FLASK_SECRET_KEY", "PLAYBOOK_AUTH_TOKEN", "SCOREBOARD_AUTH_TOKEN")
+        values = set()
+        for line in (ROOT / ".env.example").read_text().splitlines():
+            line = line.strip()
+            if line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if key.strip() in wanted and value.strip():
+                values.add(value.strip())
+        return values
+
+    def test_denylists_are_identical(self):
+        blue = self._denylist("blue_dash_app", BLUE_APP)
+        score = self._denylist("score_app_sync", SCORE_APP, extra_path=SCORE_DIR)
+        self.assertEqual(blue, score)
+
+    def test_denylists_cover_env_example_placeholders(self):
+        placeholders = self._committed_placeholders()
+        self.assertTrue(placeholders, "no placeholders parsed from .env.example")
+        blue = self._denylist("blue_dash_app", BLUE_APP)
+        score = self._denylist("score_app_sync", SCORE_APP, extra_path=SCORE_DIR)
+        self.assertTrue(placeholders <= blue, placeholders - blue)
+        self.assertTrue(placeholders <= score, placeholders - score)
+
+
+class TestPlaybookContextValidation(unittest.TestCase):
+    """#144: the operator-supplied `context` is .format()'d into argv for
+    privileged IR scripts. Validate it at the trust boundary: dict only,
+    whitelisted keys, string values, IPs where an IP is expected, and no
+    shell/format metacharacters in host/id values."""
+
+    def _module(self):
+        return _load("blue_dash_app", BLUE_APP, {"SECRET_KEY": STRONG_KEY})
+
+    def _client(self):
+        env = {"SECRET_KEY": STRONG_KEY, "PLAYBOOK_AUTH_TOKEN": "s3cret-token"}
+        return _load("blue_dash_app", BLUE_APP, env).app.test_client()
+
+    # --- the validator, unit-tested directly (fast, no engine side effects) ---
+
+    def test_none_context_becomes_empty_dict(self):
+        mod = self._module()
+        self.assertEqual(mod._validate_context(None), {})
+
+    def test_non_dict_context_raises(self):
+        mod = self._module()
+        for bad in ("a string", 123, ["list"], True):
+            with self.assertRaises(ValueError):
+                mod._validate_context(bad)
+
+    def test_unknown_key_raises(self):
+        mod = self._module()
+        with self.assertRaises(ValueError):
+            mod._validate_context({"evil_key": "x"})
+
+    def test_non_string_value_raises(self):
+        mod = self._module()
+        with self.assertRaises(ValueError):
+            mod._validate_context({"affected_host": 1234})
+
+    def test_invalid_ip_value_raises(self):
+        mod = self._module()
+        with self.assertRaises(ValueError):
+            mod._validate_context({"attacker_ip": "not-an-ip"})
+
+    def test_injection_chars_in_host_raises(self):
+        mod = self._module()
+        for payload in ("victim; rm -rf /", "a b", "{evil}", "$(id)", "a|b"):
+            with self.assertRaises(ValueError):
+                mod._validate_context({"affected_host": payload})
+
+    def test_leading_hyphen_host_rejected(self):
+        # secaudit MEDIUM: a value starting with '-' is otherwise charset-valid
+        # but reaches docker/bash argv as a flag (argument injection, CWE-88).
+        mod = self._module()
+        for payload in ("--help", "-D", "-rf"):
+            with self.assertRaises(ValueError):
+                mod._validate_context({"affected_host": payload})
+
+    def test_valid_context_passes_through(self):
+        mod = self._module()
+        ctx = {
+            "campaign_id": "kc-2026-06-24",
+            "affected_host": "victim-web",
+            "attacker_ip": "172.20.0.10",
+            "c2_ip": "10.0.0.5",
+            "pivot_host": "victim-db",
+            "source_host": "victim-web",
+        }
+        self.assertEqual(mod._validate_context(ctx), ctx)
+
+    # --- and through the route: a bad context is a 400, never reaches engine ---
+
+    def test_route_rejects_non_dict_context(self):
+        client = self._client()
+        resp = client.post(
+            "/api/run-playbook",
+            json={"playbook_id": "phishing_ir", "context": "bad"},
+            headers={"X-Auth-Token": "s3cret-token"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_route_rejects_injection_context(self):
+        client = self._client()
+        resp = client.post(
+            "/api/run-playbook",
+            json={
+                "playbook_id": "phishing_ir",
+                "context": {"affected_host": "x; reboot"},
+            },
             headers={"X-Auth-Token": "s3cret-token"},
         )
         self.assertEqual(resp.status_code, 400)
