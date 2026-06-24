@@ -65,6 +65,8 @@ gen_secret() {
 }
 FLASK_SECRET_KEY_VALUE=$(gen_secret)
 PLAYBOOK_AUTH_TOKEN_VALUE=$(gen_secret)
+# #143: gates POST /api/award on the scoreboard.
+SCOREBOARD_AUTH_TOKEN_VALUE=$(gen_secret)
 
 cat <<EOF
 # -----------------------------------------------------------------------------
@@ -85,9 +87,10 @@ KIBANA_PORT=$(( PORT_BASE + 1 ))
 ELASTICSEARCH_PORT=$(( PORT_BASE + 3 ))
 PKI_NGINX_PORT=$(( PORT_BASE + 4 ))
 
-# Per-student dashboard secrets (P6 / S5)
+# Per-student dashboard secrets (P6 / S5, #143)
 FLASK_SECRET_KEY="${FLASK_SECRET_KEY_VALUE}"
 PLAYBOOK_AUTH_TOKEN="${PLAYBOOK_AUTH_TOKEN_VALUE}"
+SCOREBOARD_AUTH_TOKEN="${SCOREBOARD_AUTH_TOKEN_VALUE}"
 
 # The rest of the variables fall back to defaults baked into docker-compose.yml.
 # If you need to override any (e.g. DB_PASS, SAFE_MODE_DOMAINS), append them

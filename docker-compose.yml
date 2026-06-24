@@ -454,6 +454,10 @@ services:
       - SIGMA_RULES_DIR=${SIGMA_RULES_DIR:-/app/sigma}
       # P6 (S5): fail fast if no unique secret is set (app also rejects defaults).
       - SECRET_KEY=${FLASK_SECRET_KEY:?set FLASK_SECRET_KEY in your .env (see .env.example)}
+      # #143: gates POST /api/award (instructor score adjustments). Optional --
+      # unset/default disables the endpoint (fail closed); the read-only
+      # scoreboard still serves. Set a unique value in .env to enable awards.
+      - SCOREBOARD_AUTH_TOKEN=${SCOREBOARD_AUTH_TOKEN:-}
     depends_on:
       - elasticsearch
     restart: unless-stopped
