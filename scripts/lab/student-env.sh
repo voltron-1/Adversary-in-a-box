@@ -41,6 +41,8 @@ fi
 # Stable slot from the id. Constrained to 0..127 so that the derived third
 # octet (slot * 2 + 1) stays within the legal 0..255 range and lab-net /
 # quarantine-net always get a unique adjacent pair.
+# Note: sha256sum is GNU coreutils (Linux). On macOS/BSD use `shasum -a 256`.
+# This script targets the Linux lab host, so coreutils is assumed throughout.
 SLOT=$(( 0x$(printf '%s' "$STUDENT_ID" | sha256sum | cut -c1-4) % 128 ))
 
 # Port offsets — start above 10000 so they don't collide with common system
@@ -60,6 +62,8 @@ gen_secret() {
     if command -v openssl >/dev/null 2>&1; then
         openssl rand -hex 32
     else
+        # Fallback for hosts without openssl. sha256sum is coreutils/Linux-only
+        # (macOS/BSD: `shasum -a 256`); fine for the Linux lab host this targets.
         head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1
     fi
 }

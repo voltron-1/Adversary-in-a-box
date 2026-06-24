@@ -59,10 +59,12 @@ class TestIndexTemplate(unittest.TestCase):
 class TestComposeWiring(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            import yaml
-        except ImportError as exc:  # pragma: no cover
-            raise unittest.SkipTest("PyYAML not installed") from exc
+        # PyYAML is a declared project dependency (red-team / blue-team /
+        # forensics-scoreboard requirements.txt, all installed in CI), so a
+        # missing import is a real breakage. Import it hard rather than
+        # SkipTest, which would silently drop these compose-wiring assertions.
+        import yaml
+
         cls.compose = yaml.safe_load(COMPOSE.read_text())
 
     def test_es_init_service_exists(self):

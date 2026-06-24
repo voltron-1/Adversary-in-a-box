@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RED_TEAM = Path(__file__).parent.parent / "red-team"
 sys.path.insert(0, str(RED_TEAM))
@@ -79,6 +80,93 @@ class TestIsLabTarget(unittest.TestCase):
     def test_quarantine_subnet_allowed(self):
         os.environ["QUARANTINE_NET_PREFIX"] = "172.20.1"
         self.assertTrue(runner._is_lab_target("172.20.1.20"))
+
+
+class TestTargetPinning(unittest.TestCase):
+    """#145: a non-literal hostname is resolved exactly once and the validated
+    IP is pinned into the target, so the campaign connects to the address the
+    allowlist vetted -- a rebinding/short-TTL resolver cannot swap it out
+    between check and connect (TOCTOU)."""
+
+    def setUp(self):
+        os.environ["LAB_NET_PREFIX"] = "172.20.0"
+
+    def tearDown(self):
+        os.environ.pop("LAB_NET_PREFIX", None)
+
+    # --- _pin_host_in_target: pure host->IP rewrite, preserving the rest ---
+
+    def test_pin_rewrites_url_host_keeping_scheme_and_path(self):
+        self.assertEqual(
+            runner._pin_host_in_target("http://victim-web/login", "172.20.0.30"),
+            "http://172.20.0.30/login",
+        )
+
+    def test_pin_preserves_url_port_and_query(self):
+        self.assertEqual(
+            runner._pin_host_in_target("http://victim-web:8080/x?y=1", "172.20.0.30"),
+            "http://172.20.0.30:8080/x?y=1",
+        )
+
+    def test_pin_preserves_bare_host_port(self):
+        self.assertEqual(
+            runner._pin_host_in_target("victim-mail:25", "172.20.0.31"),
+            "172.20.0.31:25",
+        )
+
+    def test_pin_brackets_ipv6_url_host(self):
+        # review must-fix 1: an IPv6 pin must re-add the RFC 3986 brackets that
+        # urlsplit strips, or the rebuilt URL is malformed.
+        self.assertEqual(
+            runner._pin_host_in_target("http://placeholder/x", "fd00::1"),
+            "http://[fd00::1]/x",
+        )
+
+    def test_pin_brackets_ipv6_url_host_with_port(self):
+        self.assertEqual(
+            runner._pin_host_in_target("http://placeholder:8080/x", "fd00::1"),
+            "http://[fd00::1]:8080/x",
+        )
+
+    # --- _vet_and_pin_target: validate + pin, exit non-zero out of scope ---
+
+    def test_ip_literal_returned_unchanged(self):
+        # An IP literal needs no DNS lookup: parsed directly, returned as-is.
+        with mock.patch.object(runner.socket, "gethostbyname") as gh:
+            self.assertEqual(
+                runner._vet_and_pin_target("http://172.20.0.30/x"), "http://172.20.0.30/x"
+            )
+            gh.assert_not_called()
+
+    def test_lab_hostname_not_resolved(self):
+        # In-lab DNS controls LAB_HOSTNAMES; they pass by name with no lookup.
+        with mock.patch.object(runner.socket, "gethostbyname") as gh:
+            self.assertEqual(runner._vet_and_pin_target("victim-web"), "victim-web")
+            gh.assert_not_called()
+
+    def test_arbitrary_in_lab_hostname_is_pinned(self):
+        with mock.patch.object(runner.socket, "gethostbyname", return_value="172.20.0.50") as gh:
+            self.assertEqual(
+                runner._vet_and_pin_target("http://custom-box/x"),
+                "http://172.20.0.50/x",
+            )
+            gh.assert_called_once()
+
+    def test_rebinding_uses_single_validated_resolution(self):
+        # First resolution (the one the gate validates) is in-lab; a rebinding
+        # resolver would return an out-of-lab IP on a second call. The pinned
+        # target must carry the FIRST IP and gethostbyname must run once.
+        results = ["172.20.0.50", "203.0.113.7"]
+        with mock.patch.object(runner.socket, "gethostbyname", side_effect=results) as gh:
+            pinned = runner._vet_and_pin_target("http://rebind-box/x")
+        self.assertEqual(pinned, "http://172.20.0.50/x")
+        self.assertEqual(gh.call_count, 1)
+
+    def test_out_of_scope_hostname_exits_nonzero(self):
+        with mock.patch.object(runner.socket, "gethostbyname", return_value="203.0.113.7"):
+            with self.assertRaises(SystemExit) as cm:
+                runner._vet_and_pin_target("http://evil-box/x")
+        self.assertNotEqual(cm.exception.code, 0)
 
 
 class TestRunnerCliFailsClosed(unittest.TestCase):
