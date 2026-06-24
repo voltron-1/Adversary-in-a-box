@@ -11,9 +11,12 @@ Usage:
     python runner.py --technique T1566.001
 """
 
+import ipaddress
 import os
+import socket
 import sys
 import time
+from urllib.parse import urlparse
 
 import click
 from rich.console import Console
@@ -239,6 +242,124 @@ def _report_emit_health():
         )
 
 
+# P8 (R1): the lab fabric's docker-compose service names. A target named by
+# one of these is in-scope by definition (in-lab DNS resolves it to the lab
+# subnet at runtime, but we allow it by name so validation works pre-DNS too).
+LAB_HOSTNAMES = frozenset(
+    {
+        "victim-web",
+        "victim-db",
+        "victim-mail",
+    }
+)
+
+# P8 (R1): every operator-supplied env var a campaign may dial out to. The web
+# gate alone was insufficient -- phishing reads TARGET_MAIL_HOST (live SMTP
+# connect), pass-the-hash reads TARGET_DB_HOST, and mitm reads MITM_VICTIM,
+# all straight from the environment. Each is vetted against the allowlist in
+# run_campaign before any campaign fires, so none can be pointed out of scope.
+# Keep in sync with the os.environ.get("TARGET_*"/"MITM_*") reads in campaigns/.
+TARGET_ENV_VARS = (
+    "TARGET_WEB",        # exploit_web / brute_force / recon (also --target default)
+    "TARGET_MAIL_HOST",  # phishing.spear_phish — SMTP connection
+    "TARGET_DB_HOST",    # lateral_movement.pass_the_hash
+    "MITM_VICTIM",       # credential_access.mitm — spoofed victim host
+)
+
+
+def _target_host(target: str) -> str:
+    """Extract the bare host from a URL or host[:port][/path] string.
+    Normalized to lowercase with any trailing dot stripped so that
+    `Victim-Web` and `victim-web.` compare equal to `victim-web`."""
+    t = (target or "").strip()
+    if "://" in t:
+        host = urlparse(t).hostname or ""
+    elif t.startswith("[") and "]" in t:  # bracketed IPv6 literal
+        host = t[1 : t.index("]")]
+    else:
+        host = t.split("/", 1)[0].split(":", 1)[0]
+    return host.rstrip(".").lower()
+
+
+def _lab_networks() -> list:
+    """The /24s a target IP may legally fall within (lab + quarantine)."""
+    nets = []
+    for prefix in (
+        os.environ.get("LAB_NET_PREFIX", "172.20.0"),
+        os.environ.get("QUARANTINE_NET_PREFIX", ""),
+    ):
+        if prefix:
+            try:
+                nets.append(ipaddress.ip_network(f"{prefix}.0/24", strict=False))
+            except ValueError:
+                pass
+    return nets
+
+
+def _is_lab_target(host: str) -> bool:
+    """True iff host is a known lab service name or an IP within a lab /24.
+
+    Note: for a non-literal hostname this validates the name->IP binding at
+    resolve time; the campaign re-resolves at connect time, so this gate does
+    not by itself defeat a rebinding resolver. The lab networks are
+    `internal: true` (no egress), which is the actual containment -- prefer
+    IP-literal targets when that air-gap is not present."""
+    if not host:
+        return False
+    if host in LAB_HOSTNAMES:
+        return True
+    nets = _lab_networks()
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # Not a literal IP -- resolve it (an unknown hostname pointing into
+        # the lab subnet is allowed; anything else is rejected).
+        try:
+            ip = ipaddress.ip_address(socket.gethostbyname(host))
+        except (OSError, ValueError):
+            return False
+    return any(ip in net for net in nets)
+
+
+def _assert_target_allowed(target: str) -> None:
+    """Fail closed unless target resolves into the lab. Exits non-zero on a
+    rejected target so an out-of-scope attack never reaches a campaign."""
+    host = _target_host(target)
+    if not _is_lab_target(host):
+        prefix = os.environ.get("LAB_NET_PREFIX", "172.20.0")
+        console.print(
+            f"[red]✗ Refusing out-of-scope target '{target}' (host '{host}'). "
+            f"P8 allowlist permits only lab services "
+            f"({', '.join(sorted(LAB_HOSTNAMES))}) or IPs in {prefix}.0/24. "
+            f"Set LAB_NET_PREFIX/QUARANTINE_NET_PREFIX to match your lab.[/red]"
+        )
+        sys.exit(2)
+
+
+# P8 (R1): the in-lab default web target, used when neither --target nor
+# TARGET_WEB is supplied. Pulled out of its two former inline call sites so the
+# guard below can fail fast at import if a future edit (e.g. a template copy)
+# ever points the fallback out of scope -- that path does not pass through the
+# runtime allowlist gate.
+DEFAULT_WEB_TARGET = "http://172.20.0.30"
+
+
+def _within_canonical_lab(host: str) -> bool:
+    """Membership test against the *documented* lab /24, independent of any
+    LAB_NET_PREFIX override -- used only to sanity-check the built-in default."""
+    if host in LAB_HOSTNAMES:
+        return True
+    try:
+        return ipaddress.ip_address(host) in ipaddress.ip_network("172.20.0.0/24")
+    except ValueError:
+        return False
+
+
+assert _within_canonical_lab(
+    _target_host(DEFAULT_WEB_TARGET)
+), f"DEFAULT_WEB_TARGET {DEFAULT_WEB_TARGET!r} is outside the canonical lab range"
+
+
 def run_campaign(campaign, technique, target, dry_run):
     """Run a red team campaign or specific MITRE technique."""
     print_banner()
@@ -264,14 +385,28 @@ def run_campaign(campaign, technique, target, dry_run):
     console.print(f"[dim]Techniques: {', '.join(cfg['techniques'])}[/dim]")
     console.print(f"[dim]Description: {cfg['description']}[/dim]\n")
 
+    # P8 (R1): vet EVERY operator-supplied target before anything fires --
+    # --target plus each TARGET_* / MITM_* env var a campaign may dial out to.
+    # The built-in lab defaults are trusted; only values the operator actually
+    # set are checked. full-killchain runs every campaign, so a single sweep
+    # here covers the single-campaign and kill-chain paths alike.
+    if target:
+        _assert_target_allowed(target)
+    for var in TARGET_ENV_VARS:
+        val = os.environ.get(var)
+        if val:
+            _assert_target_allowed(val)
+
     if dry_run:
         console.print("[yellow]DRY RUN — no actions will be executed[/yellow]")
         return
 
     # P4: warn early if the SIEM is unreachable so the operator knows this
     # run's attack telemetry won't be ingested or scored (emission is
-    # best-effort and would otherwise fail silently).
-    if not tagger.preflight():
+    # best-effort and would otherwise fail silently). AIB_SKIP_PREFLIGHT (the
+    # same escape hatch as scripts/lab/start.sh) skips the reachability probe
+    # for tests and intentionally air-gapped dry runs.
+    if not os.environ.get("AIB_SKIP_PREFLIGHT") and not tagger.preflight():
         console.print(
             f"[yellow]⚠ SIEM unreachable at {tagger.SIEM_HOST}:{tagger.SIEM_PORT} — "
             "attack telemetry will not be scored. Continuing anyway.[/yellow]"
@@ -308,7 +443,11 @@ def _run_single_campaign(name, cfg, target_override=None):
     try:
         module = importlib.import_module(cfg["module"])
         klass = getattr(module, cfg["class"])
-        target = target_override or os.environ.get("TARGET_WEB", "http://172.20.0.30")
+        # P8 (R1): run_campaign already vetted any operator-supplied target
+        # (--target / TARGET_WEB) against the allowlist. The DEFAULT_WEB_TARGET
+        # fallback is an in-lab address, guarded against out-of-scope edits at
+        # import (see _within_canonical_lab assertion above).
+        target = target_override or os.environ.get("TARGET_WEB", DEFAULT_WEB_TARGET)
         instance = klass(target=target, logger=logger, tagger=tagger)
 
         console.print(f"[green]▶ Executing {cfg['class']}...[/green]")
