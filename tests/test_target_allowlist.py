@@ -106,9 +106,7 @@ class TestRunnerCliFailsClosed(unittest.TestCase):
 
     def test_in_lab_target_passes_gate(self):
         # A lab IP clears the allowlist; --dry-run then returns cleanly.
-        proc = self._run(
-            "--campaign", "recon", "--target", "http://172.20.0.30", "--dry-run"
-        )
+        proc = self._run("--campaign", "recon", "--target", "http://172.20.0.30", "--dry-run")
         self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
         self.assertNotIn("out-of-scope", (proc.stdout + proc.stderr).lower())
 
@@ -117,7 +115,9 @@ class TestRunnerCliFailsClosed(unittest.TestCase):
         # value must be rejected before any SMTP connection is attempted, even
         # though it is never passed as --target.
         proc = self._run(
-            "--campaign", "phishing", "--dry-run",
+            "--campaign",
+            "phishing",
+            "--dry-run",
             env_extra={"TARGET_MAIL_HOST": "attacker.example.invalid"},
         )
         self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
@@ -126,7 +126,9 @@ class TestRunnerCliFailsClosed(unittest.TestCase):
     def test_out_of_scope_db_host_rejected(self):
         # P8: pass-the-hash reads TARGET_DB_HOST from env -- same gate applies.
         proc = self._run(
-            "--campaign", "lateral", "--dry-run",
+            "--campaign",
+            "lateral",
+            "--dry-run",
             env_extra={"TARGET_DB_HOST": "attacker.example.invalid"},
         )
         self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
@@ -135,7 +137,9 @@ class TestRunnerCliFailsClosed(unittest.TestCase):
     def test_in_lab_mail_host_passes_gate(self):
         # An in-lab TARGET_MAIL_HOST clears the allowlist sweep.
         proc = self._run(
-            "--campaign", "phishing", "--dry-run",
+            "--campaign",
+            "phishing",
+            "--dry-run",
             env_extra={"TARGET_MAIL_HOST": "172.20.0.32"},
         )
         self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)

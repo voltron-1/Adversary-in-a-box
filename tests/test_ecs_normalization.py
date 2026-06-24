@@ -18,8 +18,7 @@ PIPELINES = ["suricata.conf", "zeek.conf", "syslog.conf"]
 # "source.geo" -- the mixed convention we eliminated. The trailing quote keeps
 # this from matching Ruby calls like "event.set('@timestamp', ...)".
 DOTTED_ECS = re.compile(
-    r'"(?:event|observer|threat|source|destination|host|process|user|network)'
-    r'(?:\.\w+)+"'
+    r'"(?:event|observer|threat|source|destination|host|process|user|network)' r'(?:\.\w+)+"'
 )
 
 
@@ -31,9 +30,7 @@ class TestEcsNormalization(unittest.TestCase):
 
     def _code_text(self, name):
         """Pipeline text with comment lines removed."""
-        lines = [
-            ln for ln in self._text(name).splitlines() if not ln.lstrip().startswith("#")
-        ]
+        lines = [ln for ln in self._text(name).splitlines() if not ln.lstrip().startswith("#")]
         return "\n".join(lines)
 
     def test_no_dotted_ecs_field_keys(self):

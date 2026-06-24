@@ -260,10 +260,10 @@ LAB_HOSTNAMES = frozenset(
 # run_campaign before any campaign fires, so none can be pointed out of scope.
 # Keep in sync with the os.environ.get("TARGET_*"/"MITM_*") reads in campaigns/.
 TARGET_ENV_VARS = (
-    "TARGET_WEB",        # exploit_web / brute_force / recon (also --target default)
+    "TARGET_WEB",  # exploit_web / brute_force / recon (also --target default)
     "TARGET_MAIL_HOST",  # phishing.spear_phish — SMTP connection
-    "TARGET_DB_HOST",    # lateral_movement.pass_the_hash
-    "MITM_VICTIM",       # credential_access.mitm — spoofed victim host
+    "TARGET_DB_HOST",  # lateral_movement.pass_the_hash
+    "MITM_VICTIM",  # credential_access.mitm — spoofed victim host
 )
 
 
