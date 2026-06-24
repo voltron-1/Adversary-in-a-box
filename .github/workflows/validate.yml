@@ -17,6 +17,16 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
 
+    # P6 (S5): the Flask services require these via `${VAR:?}`, so every step
+    # that runs `docker compose` (config validation + the build smoke test)
+    # needs them set or interpolation fails. Set once at job level so a future
+    # compose-using step can't silently reintroduce the failure. Dummy values --
+    # compose only renders/builds here; the apps reject known-default secrets at
+    # runtime independently of these.
+    env:
+      FLASK_SECRET_KEY: ci-validate-dummy-not-a-real-secret
+      PLAYBOOK_AUTH_TOKEN: ci-validate-dummy-not-a-real-secret
+
     steps:
     - uses: actions/checkout@v7
 

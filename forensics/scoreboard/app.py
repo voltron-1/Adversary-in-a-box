@@ -10,8 +10,33 @@ from pathlib import Path
 from flask import Flask, jsonify, make_response, render_template, request
 from scorer import Scorer  # OQ-5: MTTD/MTTA tiered scoring
 
+# P6 (S5): refuse to boot on an unset or known-default SECRET_KEY -- a session
+# secret readable from git is forgeable, so falling back to a literal is unsafe.
+INSECURE_SECRET_KEYS = frozenset(
+    {
+        "",
+        "scoreboard-secret",  # former hardcoded fallback (this app)
+        "lab-secret-key",  # former hardcoded fallback (dashboard app)
+        "lab-secret-change-me",  # former docker-compose default
+        "adversary-in-a-box-lab-secret-key-change-me",  # .env.example placeholder
+    }
+)
+
+
+def _require_secret_key() -> str:
+    """Return SECRET_KEY, raising if unset or a known shared default."""
+    key = os.environ.get("SECRET_KEY", "").strip()
+    if key in INSECURE_SECRET_KEYS:
+        raise RuntimeError(
+            "SECRET_KEY is unset or set to a known default. Set a unique "
+            "FLASK_SECRET_KEY in your .env (see .env.example) before starting "
+            "the scoreboard."
+        )
+    return key
+
+
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "scoreboard-secret")
+app.secret_key = _require_secret_key()
 
 EVIDENCE_DIR = Path(os.environ.get("EVIDENCE_DIR", "/evidence"))
 ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "http://elasticsearch:9200")

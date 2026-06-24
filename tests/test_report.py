@@ -8,12 +8,18 @@ so the test asserts the report faithfully renders attacks run, detections
 made, playbooks executed, and final scores (the AC's four sections).
 """
 
+import os
 import sys
 import unittest
 from pathlib import Path
 
 # Make forensics/scoreboard importable (mirrors test_scorer.py).
 sys.path.insert(0, str(Path(__file__).parent.parent / "forensics" / "scoreboard"))
+
+# P6 (S5): app.py refuses to import without a non-default SECRET_KEY. This test
+# imports the app at module load, so provide a throwaway key (not in the
+# INSECURE_SECRET_KEYS denylist) before the import. CI sets no SECRET_KEY.
+os.environ.setdefault("SECRET_KEY", "test-report-secret-not-a-known-default-0000")
 
 import app as app_module  # noqa: E402
 
