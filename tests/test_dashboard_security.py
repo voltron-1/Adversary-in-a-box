@@ -96,6 +96,108 @@ class TestSecretKeyEnforcement(unittest.TestCase):
         self.assertEqual(mod.app.secret_key, STRONG_KEY)
 
 
+class TestAwardAuth(unittest.TestCase):
+    """#143: POST /api/award is an instructor-only, state-changing endpoint.
+    It must require SCOREBOARD_AUTH_TOKEN (same pattern as the playbook runner),
+    fail closed when unset, and never 500 on a malformed body."""
+
+    def _client(self, token_env):
+        env = {"SECRET_KEY": STRONG_KEY}
+        env.update(token_env)
+        mod = _load("score_app", SCORE_APP, env, extra_path=SCORE_DIR)
+        return mod.app.test_client()
+
+    def _award_body(self):
+        return {"team": "red_team", "event": "extra_credit_red", "detail": "x"}
+
+    def test_no_auth_header_rejected(self):
+        # Endpoint configured, but the caller presents no token.
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": "s3cret-token"})
+        resp = client.post("/api/award", json=self._award_body())
+        self.assertEqual(resp.status_code, 401)
+
+    def test_token_env_absent_disables_endpoint(self):
+        # Distinct from set-to-empty: the env var is not present at all
+        # (_load pops it). Must still fail closed.
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": None})
+        resp = client.post(
+            "/api/award", json=self._award_body(), headers={"X-Auth-Token": "anything"}
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_wrong_token_rejected(self):
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": "s3cret-token"})
+        resp = client.post("/api/award", json=self._award_body(), headers={"X-Auth-Token": "wrong"})
+        self.assertEqual(resp.status_code, 401)
+
+    def test_correct_token_awards(self):
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": "s3cret-token"})
+        resp = client.post(
+            "/api/award",
+            json=self._award_body(),
+            headers={"X-Auth-Token": "s3cret-token"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["awarded"], 10)
+
+    def test_bearer_token_accepted(self):
+        # The award route is deterministic post-auth (200 or 400, never 500),
+        # so pin the full happy path for the Bearer scheme rather than just !=401.
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": "s3cret-token"})
+        resp = client.post(
+            "/api/award",
+            json=self._award_body(),
+            headers={"Authorization": "Bearer s3cret-token"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["awarded"], 10)
+
+    def test_disabled_when_no_token_configured(self):
+        # Fail closed: no token configured -> endpoint disabled.
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": ""})
+        resp = client.post(
+            "/api/award", json=self._award_body(), headers={"X-Auth-Token": "anything"}
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_default_placeholder_token_disables_endpoint(self):
+        default = "adversary-in-a-box-lab-secret-key-change-me"
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": default})
+        resp = client.post("/api/award", json=self._award_body(), headers={"X-Auth-Token": default})
+        self.assertEqual(resp.status_code, 401)
+
+    def test_invalid_event_rejected_when_authed(self):
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": "s3cret-token"})
+        resp = client.post(
+            "/api/award",
+            json={"team": "red_team", "event": "not_a_rule"},
+            headers={"X-Auth-Token": "s3cret-token"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_body_does_not_500(self):
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": "s3cret-token"})
+        resp = client.post(
+            "/api/award",
+            data="not json",
+            content_type="text/plain",
+            headers={"X-Auth-Token": "s3cret-token"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_garbled_json_body_does_not_500(self):
+        # Content-Type says JSON but the body is invalid JSON: get_json(silent=True)
+        # returns None, the `or {}` guard absorbs it -> clean 400, not a 500.
+        client = self._client({"SCOREBOARD_AUTH_TOKEN": "s3cret-token"})
+        resp = client.post(
+            "/api/award",
+            data="{broken",
+            content_type="application/json",
+            headers={"X-Auth-Token": "s3cret-token"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+
 class TestPlaybookAuth(unittest.TestCase):
     def _client(self, token_env):
         env = {"SECRET_KEY": STRONG_KEY}

@@ -3,6 +3,7 @@ forensics/scoreboard/app.py — Forensic Scoreboard Flask Application
 Tracks and displays red/blue team scores in real-time.
 """
 
+import hmac
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,33 @@ def _require_secret_key() -> str:
             "the scoreboard."
         )
     return key
+
+
+# #143: POST /api/award applies instructor-only score adjustments (including
+# lab_violation_penalty), so it is gated behind a token -- same pattern as the
+# blue-team dashboard's playbook runner. Read once at startup. An empty value
+# (or a known committed default, which is no secret) disables the endpoint
+# entirely: fail closed so an unauthenticated lab-net peer cannot tamper with
+# the scoreboard.
+_raw_award_token = os.environ.get("SCOREBOARD_AUTH_TOKEN", "").strip()
+# Reuses INSECURE_SECRET_KEYS: a value that is unfit to be a session secret is
+# equally unfit as an auth token, so a committed default normalizes to "" here
+# (which disables the endpoint) just as it blocks boot for SECRET_KEY.
+SCOREBOARD_AUTH_TOKEN = "" if _raw_award_token in INSECURE_SECRET_KEYS else _raw_award_token
+
+
+def _award_auth_ok(req) -> bool:
+    """#143: authorize POST /api/award against SCOREBOARD_AUTH_TOKEN.
+    Fail closed: if the token is unset, the endpoint is disabled entirely.
+    Accepts the token via the X-Auth-Token header or `Authorization: Bearer`."""
+    if not SCOREBOARD_AUTH_TOKEN:
+        return False
+    provided = req.headers.get("X-Auth-Token", "").strip()
+    if not provided:
+        auth = req.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            provided = auth[len("Bearer ") :].strip()
+    return bool(provided) and hmac.compare_digest(provided, SCOREBOARD_AUTH_TOKEN)
 
 
 app = Flask(__name__)
@@ -127,7 +155,17 @@ def award_points():
     Body: {"team": "red_team"|"blue_team", "event": <one of MANUAL_OVERRIDE_RULES>,
            "detail": "<optional human note>"}
     """
-    data = request.get_json()
+    # #143: gate the endpoint before touching the request body. Fail closed --
+    # an unauthenticated lab-net peer must not be able to adjust scores. Log the
+    # rejection so token-guessing (T1110) against the scoreboard is visible.
+    if not _award_auth_ok(request):
+        app.logger.warning(
+            "award denied: unauthorized POST /api/award from %s", request.remote_addr
+        )
+        return jsonify({"error": "unauthorized"}), 401
+
+    # #143: silent=True so a non-JSON body yields a clean 400, not a 500.
+    data = request.get_json(silent=True) or {}
     team = data.get("team")
     event = data.get("event")
     detail = data.get("detail", "")
@@ -142,6 +180,16 @@ def award_points():
         ), 400
 
     points = MANUAL_OVERRIDE_RULES[event]
+    # #143: audit successful instructor adjustments (incl. lab_violation_penalty)
+    # so the SIEM has a trail of who changed the score and by how much (T1565).
+    app.logger.info(
+        "award: %s %+d to %s from %s (detail=%r)",
+        event,
+        points,
+        team,
+        request.remote_addr,
+        detail,
+    )
     MANUAL_SCORES[team]["total"] += points
     MANUAL_SCORES[team]["history"].append(
         {
