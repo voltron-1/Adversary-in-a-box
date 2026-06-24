@@ -112,7 +112,11 @@ services:
       - NET_ADMIN
     environment:
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://elasticsearch:9200}
-      - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}
+      # P6 (S5): fail fast if no unique secret is set -- the app also refuses
+      # to boot on a known default. scripts/lab/student-env.sh generates both.
+      - SECRET_KEY=${FLASK_SECRET_KEY:?set FLASK_SECRET_KEY in your .env (see .env.example)}
+      # P6 (S5): gates POST /api/run-playbook; unset disables the endpoint.
+      - PLAYBOOK_AUTH_TOKEN=${PLAYBOOK_AUTH_TOKEN:?set PLAYBOOK_AUTH_TOKEN in your .env (see .env.example)}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # Compose project name surfaces inside containers so IR scripts can build
       # network names like ${LAB_NET} = "<project>_lab-net".
@@ -400,7 +404,8 @@ services:
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://elasticsearch:9200}
       # P1: where scorer.py loads the Sigma rules from (matches the mount above).
       - SIGMA_RULES_DIR=${SIGMA_RULES_DIR:-/app/sigma}
-      - SECRET_KEY=${FLASK_SECRET_KEY:-lab-secret-change-me}
+      # P6 (S5): fail fast if no unique secret is set (app also rejects defaults).
+      - SECRET_KEY=${FLASK_SECRET_KEY:?set FLASK_SECRET_KEY in your .env (see .env.example)}
     depends_on:
       - elasticsearch
     restart: unless-stopped
