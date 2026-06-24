@@ -310,6 +310,47 @@ services:
         hard: -1
     restart: unless-stopped
 
+  # P7 (S3): one-shot ILM bootstrap (mirrors the pki-init pattern). Waits for
+  # Elasticsearch, then installs the aib-retention-7d ILM policy and the
+  # aib-logs index template so every lab telemetry index (suricata-*, zeek-*,
+  # syslog-*, red-team-events-*, ir-events-*) is auto-deleted 7 days after
+  # creation. Idempotent: PUTs overwrite. Data producers (logstash) wait on its
+  # successful completion so their indices inherit the policy.
+  es-init:
+    image: curlimages/curl:8.6.0
+    hostname: es-init
+    networks:
+      - lab-net
+    volumes:
+      - ./siem/elasticsearch/ilm:/ilm:ro
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    entrypoint:
+      - /bin/sh
+      - -ec
+      # $$VAR escapes compose interpolation so the shell expands it at runtime.
+      - |
+        echo "[es-init] waiting for Elasticsearch..."
+        tries=40
+        until curl -fsS "$${ELASTICSEARCH_URL}/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; do
+          tries=$$((tries - 1))
+          [ "$$tries" -gt 0 ] || { echo "[es-init] Elasticsearch never reached yellow -- giving up"; exit 1; }
+          sleep 3
+        done
+        echo "[es-init] installing ILM retention policy aib-retention-7d (delete >7d)..."
+        curl -fsS -X PUT "$${ELASTICSEARCH_URL}/_ilm/policy/aib-retention-7d" \
+          -H 'Content-Type: application/json' --data @/ilm/ilm-policy.json
+        echo
+        echo "[es-init] installing index template aib-logs..."
+        curl -fsS -X PUT "$${ELASTICSEARCH_URL}/_index_template/aib-logs" \
+          -H 'Content-Type: application/json' --data @/ilm/index-template.json
+        echo
+        echo "[es-init] done."
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: "no"
+
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.0
     hostname: logstash
@@ -334,7 +375,14 @@ services:
     # Phase C6: heap 512m; cap container at 1G for pipeline buffers.
     mem_limit: 1g
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
+      # P7 (S3): wait for the ILM policy + index template to be installed so
+      # the suricata-*/zeek-*/syslog-* indices Logstash creates inherit the
+      # 7-day retention policy (templates apply only to indices created after
+      # they exist).
+      es-init:
+        condition: service_completed_successfully
     # audit-4 L6: probe the Logstash monitoring API (port 9600) so a
     # pipeline that never comes up surfaces as `unhealthy` instead of
     # silently dropping every event. start_period covers JVM warm-up on a

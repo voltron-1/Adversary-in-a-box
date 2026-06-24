@@ -1,0 +1,21 @@
+{
+  "policy": {
+    "_meta": {
+      "description": "Adversary-in-a-Box lab retention (P7/S3): delete lab telemetry indices 7 days after creation so a long-running lab host does not fill its disk. Daily indices age out individually; no rollover is required."
+    },
+    "phases": {
+      "hot": {
+        "min_age": "0ms",
+        "actions": {
+          "set_priority": { "priority": 100 }
+        }
+      },
+      "delete": {
+        "min_age": "7d",
+        "actions": {
+          "delete": {}
+        }
+      }
+    }
+  }
+}
