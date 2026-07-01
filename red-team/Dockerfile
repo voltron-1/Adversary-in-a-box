@@ -7,7 +7,7 @@
 # pulls from the live Kali repos, so the package layer is not fully frozen --
 # the digest pins the base image only. Bump per the image-pinning note in
 # docs/setup-guide.md.
-FROM kalilinux/kali-rolling@sha256:359c8d8ea58feebdd2c4be89e5dcae97ac37fc7e143f39ef6235bcd804ec0d74
+FROM kalilinux/kali-rolling@sha256:5eb62c779b7be98f9f1b79a499be7e771e2df7c2a01b33eb435417e1088a796c
 
 LABEL maintainer="Adversary-in-a-Box Lab"
 LABEL description="Red team attacker container — Kali Linux base"
