@@ -1,4 +1,4 @@
-FROM nginx:1.31.1-alpine
+FROM nginx:1.31.2-alpine
 
 LABEL maintainer="Adversary-in-a-Box Lab"
 LABEL description="PKI lab TLS-hardened nginx (OQ-4) — Domain 3 Exercise 3.2"
