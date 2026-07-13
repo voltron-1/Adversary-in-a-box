@@ -8,7 +8,8 @@
   ],
   "priority": 100,
   "_meta": {
-    "description": "Adversary-in-a-Box lab telemetry indices (P7/S3). Attaches the aib-retention-7d ILM policy and single-node-friendly settings to every lab index pattern. Composable template; applies only to indices created after it is installed."
+    "description": "Adversary-in-a-Box lab telemetry indices (P7/S3). Attaches the aib-retention-7d ILM policy and single-node-friendly settings to every lab index pattern. Composable template; applies only to indices created after it is installed.",
+    "replicas_note": "number_of_replicas is 0 because the lab runs a single ES node -- a replica would have nowhere to allocate and would pin every index to status yellow. On a multi-node cluster, raise this to >=1 for redundancy."
   },
   "template": {
     "settings": {
