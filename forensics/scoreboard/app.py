@@ -13,6 +13,12 @@ from scorer import Scorer  # OQ-5: MTTD/MTTA tiered scoring
 
 # P6 (S5): refuse to boot on an unset or known-default SECRET_KEY -- a session
 # secret readable from git is forgeable, so falling back to a literal is unsafe.
+#
+# #146: this denylist is duplicated in blue-team/dashboard/app.py because the
+# two apps build from separate Docker contexts and cannot share an import. Keep
+# the two copies in sync; tests/test_dashboard_security.py
+# (TestInsecureKeyDenylistSync) fails CI if they drift or omit a .env.example
+# placeholder.
 INSECURE_SECRET_KEYS = frozenset(
     {
         "",

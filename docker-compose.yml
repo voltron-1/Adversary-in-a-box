@@ -332,7 +332,14 @@ services:
       - |
         echo "[es-init] waiting for Elasticsearch..."
         tries=40
-        until curl -fsS "$${ELASTICSEARCH_URL}/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; do
+        while true; do
+          curl -fsS "$${ELASTICSEARCH_URL}/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1 && break
+          rc=$$?  # only set/read on the failure path (break skips it on success)
+          # curl exit 6 = could-not-resolve-host: a config error (wrong service
+          # name or wrong network), not "ES still starting". Fast-fail instead
+          # of burning the full ~120s retry budget on a host that will never
+          # appear. Connection-refused (exit 7) stays retryable below.
+          [ "$$rc" -ne 6 ] || { echo "[es-init] cannot resolve $${ELASTICSEARCH_URL} (curl exit 6) -- check service name/network; giving up"; exit 1; }
           tries=$$((tries - 1))
           [ "$$tries" -gt 0 ] || { echo "[es-init] Elasticsearch never reached yellow -- giving up"; exit 1; }
           sleep 3

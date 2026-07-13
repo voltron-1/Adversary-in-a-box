@@ -4,7 +4,9 @@ Real-time alert triage, playbook runner, and threat overview.
 """
 
 import hmac
+import ipaddress
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,6 +15,12 @@ from flask import Flask, jsonify, render_template, request
 # P6 (S5): a shared/committed default secret is no better than no secret --
 # session cookies signed with a value readable from git are forgeable. Refuse
 # to boot on an unset or known-default SECRET_KEY rather than fall back to one.
+#
+# #146: this denylist is duplicated in forensics/scoreboard/app.py because the
+# two apps build from separate Docker contexts and cannot share an import. Keep
+# the two copies in sync; tests/test_dashboard_security.py
+# (TestInsecureKeyDenylistSync) fails CI if they drift or omit a .env.example
+# placeholder.
 INSECURE_SECRET_KEYS = frozenset(
     {
         "",
@@ -151,6 +159,48 @@ PLAYBOOKS = [
 ]
 
 
+# #144: the playbook `context` is operator-supplied and ends up .format()'d
+# into argv for privileged IR scripts (block_ip.sh / isolate_host.sh run with
+# NET_ADMIN + the Docker socket). Validate it at this trust boundary so the
+# engine never sees an unexpected type or an injection payload.
+#   - keys: only those the shipped playbooks actually interpolate, plus
+#     campaign_id (read by PlaybookEngine for SIEM correlation)
+#   - *_ip values must parse as IP addresses
+#   - host / id values are constrained to a hostname-safe charset so no shell
+#     or str.format metacharacter ( ; | $ { } space ... ) can reach argv. The
+#     first character must be alphanumeric: a leading '-' is charset-valid but
+#     would reach docker/bash argv as a flag (argument injection, CWE-88).
+_CONTEXT_IP_KEYS = frozenset({"attacker_ip", "c2_ip"})
+_CONTEXT_HOST_KEYS = frozenset({"affected_host", "pivot_host", "source_host", "campaign_id"})
+_CONTEXT_KEYS = _CONTEXT_IP_KEYS | _CONTEXT_HOST_KEYS
+_SAFE_HOST_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,252}\Z")
+
+
+def _validate_context(raw: object) -> dict:
+    """Return a vetted context dict or raise ValueError. Treats a missing /
+    null context as empty; rejects any other non-dict, unknown keys, non-string
+    values, malformed IPs, and metacharacter-bearing host/id values."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("context must be an object")
+    clean: dict = {}
+    for key, value in raw.items():
+        if key not in _CONTEXT_KEYS:
+            raise ValueError(f"unknown context key: {key}")
+        if not isinstance(value, str):
+            raise ValueError(f"context value for '{key}' must be a string")
+        if key in _CONTEXT_IP_KEYS:
+            try:
+                ipaddress.ip_address(value)
+            except ValueError as exc:
+                raise ValueError(f"context value for '{key}' must be an IP") from exc
+        elif not _SAFE_HOST_RE.match(value):
+            raise ValueError(f"context value for '{key}' has invalid characters")
+        clean[key] = value
+    return clean
+
+
 def get_alerts():
     """Fetch alerts from Elasticsearch or fall back to demo data."""
     try:
@@ -209,7 +259,11 @@ def run_playbook():
     # it to the known registry rather than passing arbitrary input through.
     if playbook_id not in {p["id"] for p in PLAYBOOKS}:
         return jsonify({"success": False, "error": "unknown playbook_id"}), 400
-    context = data.get("context", {})
+    # #144: vet the operator-supplied context before it reaches the engine.
+    try:
+        context = _validate_context(data.get("context"))
+    except ValueError as exc:
+        return jsonify({"success": False, "error": f"invalid context: {exc}"}), 400
     try:
         import sys
 
