@@ -12,4 +12,4 @@ python-dateutil==2.9.0.post0
 # 1.1.6 caps pysigma<0.12.0, so the backend has to bump to its 2.x line
 # in lock-step. Verified resolution with `pip install --dry-run`.
 sigma-cli==3.0.2
-pySigma-backend-elasticsearch==2.0.3
+pySigma-backend-elasticsearch==2.1.0
