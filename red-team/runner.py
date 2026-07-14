@@ -471,7 +471,9 @@ def run_campaign(campaign, technique, target, dry_run, force):
     if dry_run:
         console.print("[yellow]DRY RUN — no actions will be executed[/yellow]")
         console.print(f"[yellow]Resolved target:[/yellow] {os.environ.get('TARGET_WEB', target)}")
-        console.print(f"[yellow]Campaign plan:[/yellow] {campaign} ({', '.join(cfg['techniques'])})")
+        console.print(
+            f"[yellow]Campaign plan:[/yellow] {campaign} ({', '.join(cfg['techniques'])})"
+        )
         return
 
     # P4: warn early if the SIEM is unreachable so the operator knows this
@@ -669,7 +671,9 @@ def cleanup_all():
     is_flag=True,
     help="OQ-1: roll back persistent state left by any campaign and exit.",
 )
-@click.option("--force", is_flag=True, help="P10: Force execution of impact campaigns or full-killchain.")
+@click.option(
+    "--force", is_flag=True, help="P10: Force execution of impact campaigns or full-killchain."
+)
 def main(show_list, campaign, technique, target, dry_run, do_cleanup, force):
     """Adversary-in-a-Box red team campaign launcher."""
     if do_cleanup:
