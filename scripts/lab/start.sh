@@ -17,6 +17,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 PREFLIGHT="${ROOT_DIR}/scripts/safety/egress_test.sh"
 
+# Validate LAB_NET_PREFIX format (if set) before it flows into docker-compose and suricata awk
+# which break obscurely if the prefix contains regex metacharacters or is malformed.
+PREFIX_TO_TEST="${LAB_NET_PREFIX:-}"
+if [[ -z "$PREFIX_TO_TEST" && -f "${ROOT_DIR}/.env" ]]; then
+    PREFIX_TO_TEST=$(grep -E '^LAB_NET_PREFIX=' "${ROOT_DIR}/.env" | cut -d= -f2 | tr -d '""' | tr -d "''" || true)
+fi
+PREFIX_TO_TEST="${PREFIX_TO_TEST:-172.20.0}"
+if ! [[ "$PREFIX_TO_TEST" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+    echo "[ERROR] LAB_NET_PREFIX must be a 3-octet IPv4 prefix (e.g., 172.20.0), got: '$PREFIX_TO_TEST'" >&2
+    exit 2
+fi
+
 if [[ -z "${AIB_SKIP_PREFLIGHT:-}" ]]; then
     if [[ ! -x "$PREFLIGHT" ]]; then
         echo "[ERROR] preflight missing or not executable: $PREFLIGHT" >&2
