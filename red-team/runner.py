@@ -442,6 +442,14 @@ def run_campaign(campaign, technique, target, dry_run):
         sys.exit(1)
 
     cfg = CAMPAIGNS[campaign]
+    
+    # P10: check if force is required
+    is_impact = False
+    if cfg.get("module"):
+        is_impact = any(tagger.get_metadata(t).get("tactic") == "Impact" for t in cfg["techniques"])
+    if (campaign == "full-killchain" or is_impact) and not force and not dry_run:
+        console.print("[red]✗ Refusing to run destructive campaign without --force.[/red]")
+        sys.exit(1)
     console.print(f"\n[bold red]🔴 Launching campaign:[/bold red] [cyan]{campaign}[/cyan]")
     console.print(f"[dim]Techniques: {', '.join(cfg['techniques'])}[/dim]")
     console.print(f"[dim]Description: {cfg['description']}[/dim]\n")
@@ -462,6 +470,8 @@ def run_campaign(campaign, technique, target, dry_run):
 
     if dry_run:
         console.print("[yellow]DRY RUN — no actions will be executed[/yellow]")
+        console.print(f"[yellow]Resolved target:[/yellow] {os.environ.get('TARGET_WEB', target)}")
+        console.print(f"[yellow]Campaign plan:[/yellow] {campaign} ({', '.join(cfg['techniques'])})")
         return
 
     # P4: warn early if the SIEM is unreachable so the operator knows this
@@ -514,15 +524,36 @@ def _run_single_campaign(name, cfg, target_override=None):
         instance = klass(target=target, logger=logger, tagger=tagger)
 
         console.print(f"[green]▶ Executing {cfg['class']}...[/green]")
-        result = instance.run()
-        success = bool(result.get("success"))
+        
+        timeout_str = os.environ.get("CAMPAIGN_TIMEOUT", "")
+        timeout = int(timeout_str) if timeout_str else 0
+        import signal
 
-        if success:
-            console.print("[bold green]✓ Campaign completed successfully[/bold green]")
-        else:
-            console.print(
-                f"[yellow]⚠ Campaign completed with warnings: {result.get('message')}[/yellow]"
-            )
+        def _timeout_handler(signum, frame):
+            raise TimeoutError("Campaign timed out.")
+            
+        if timeout > 0:
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(timeout)
+            
+        try:
+            result = instance.run()
+            success = bool(result.get("success"))
+
+            if success:
+                console.print("[bold green]✓ Campaign completed successfully[/bold green]")
+            else:
+                console.print(
+                    f"[yellow]⚠ Campaign completed with warnings: {result.get('message')}[/yellow]"
+                )
+        except TimeoutError:
+            success = False
+            result = {"success": False, "message": f"Campaign timed out after {timeout} seconds."}
+            tagger.emit_lifecycle("campaign_timeout", campaign_id, {"campaign": name})
+            console.print(f"[red]✗ {result['message']}[/red]")
+        finally:
+            if timeout > 0:
+                signal.alarm(0)
 
         # Log to SIEM, tagged with the run's correlation id.
         for technique in cfg["techniques"]:
@@ -638,7 +669,8 @@ def cleanup_all():
     is_flag=True,
     help="OQ-1: roll back persistent state left by any campaign and exit.",
 )
-def main(show_list, campaign, technique, target, dry_run, do_cleanup):
+@click.option("--force", is_flag=True, help="P10: Force execution of impact campaigns or full-killchain.")
+def main(show_list, campaign, technique, target, dry_run, do_cleanup, force):
     """Adversary-in-a-Box red team campaign launcher."""
     if do_cleanup:
         cleanup_all()
@@ -646,7 +678,7 @@ def main(show_list, campaign, technique, target, dry_run, do_cleanup):
     if show_list:
         list_campaigns()
         return
-    run_campaign(campaign, technique, target, dry_run)
+    run_campaign(campaign, technique, target, dry_run, force)
 
 
 if __name__ == "__main__":

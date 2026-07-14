@@ -221,6 +221,7 @@ class MitreTagger:
             "event_type": event_type,
             "@timestamp": datetime.now(UTC).isoformat(),
             "source.ip": _attacker_ip(),
+            "operator_id": os.environ.get("OPERATOR_ID", "unknown"),
             **(extra or {}),
         }
         return self._post(doc)
