@@ -442,7 +442,7 @@ def run_campaign(campaign, technique, target, dry_run):
         sys.exit(1)
 
     cfg = CAMPAIGNS[campaign]
-    
+
     # P10: check if force is required
     is_impact = False
     if cfg.get("module"):
@@ -524,18 +524,18 @@ def _run_single_campaign(name, cfg, target_override=None):
         instance = klass(target=target, logger=logger, tagger=tagger)
 
         console.print(f"[green]▶ Executing {cfg['class']}...[/green]")
-        
+
         timeout_str = os.environ.get("CAMPAIGN_TIMEOUT", "")
         timeout = int(timeout_str) if timeout_str else 0
         import signal
 
         def _timeout_handler(signum, frame):
             raise TimeoutError("Campaign timed out.")
-            
+
         if timeout > 0:
             signal.signal(signal.SIGALRM, _timeout_handler)
             signal.alarm(timeout)
-            
+
         try:
             result = instance.run()
             success = bool(result.get("success"))
