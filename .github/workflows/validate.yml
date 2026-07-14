@@ -147,4 +147,10 @@ jobs:
       # Compile every .yml in blue-team/detection/sigma/ to EQL JSON. Catches
       # rule syntax regressions before they ship. REBASE=0 so we don't try to
       # push to a non-existent Kibana from CI.
-      run: bash scripts/setup/compile_sigma.sh
+      # Added retry loop because sigma-cli sometimes times out fetching MITRE data.
+      run: |
+        for i in {1..3}; do
+          bash scripts/setup/compile_sigma.sh && exit 0 || echo "Attempt $i failed"
+          sleep 5
+        done
+        exit 1
