@@ -1,8 +1,14 @@
-#!/bin/bash
+#!/bin/sh
 # pki-lab/setup_ca.sh — Build a two-tier PKI with OpenSSL
 # Domain 3 Exercise: Certificate Authority setup (SY0-701 Objective 3.9)
+#
+# POSIX sh, not bash: this runs under alpine/openssl's `sh` in the
+# pki-init/pki-ca services (docker-compose.yml). `pipefail` is a bashism
+# real POSIX sh (dash) rejects outright ("Illegal option -o pipefail");
+# busybox ash was silently tolerating it, which is how this went
+# unnoticed -- fixed here alongside G6.2's issue_cert.sh POSIX pass.
 
-set -euo pipefail
+set -eu
 
 PKI_DIR="${PKI_DIR:-./pki-lab/ca}"
 COUNTRY="${COUNTRY:-US}"
@@ -24,6 +30,11 @@ for _ca in root-ca intermediate-ca; do
 done
 chmod 700 "$PKI_DIR"/root-ca/private "$PKI_DIR"/intermediate-ca/private
 touch "$PKI_DIR"/root-ca/index.txt "$PKI_DIR"/intermediate-ca/index.txt
+# G6.2: unique_subject lives in <database>.attr, not the CA config file --
+# issue_cert.sh now signs via `openssl ca` (a real ledger against this
+# index.txt), which would otherwise refuse to reissue a cert for the same
+# CN across separate exercise runs.
+echo "unique_subject = no" > "$PKI_DIR"/intermediate-ca/index.txt.attr
 echo 1000 > "$PKI_DIR"/root-ca/serial
 echo 1000 > "$PKI_DIR"/intermediate-ca/serial
 echo 1000 > "$PKI_DIR"/root-ca/crlnumber

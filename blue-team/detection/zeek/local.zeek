@@ -8,6 +8,10 @@
 @load base/protocols/smtp
 @load base/protocols/ssh
 @load base/protocols/ssl
+# G6.2 (Gap M): base/protocols/ssl on its own logs the TLS handshake
+# (ssl.log) but not the certificate details -- x509.log needs the file
+# analysis framework's X.509 script explicitly loaded.
+@load base/files/x509
 @load base/frameworks/notice
 @load base/frameworks/sumstats
 @load policy/protocols/ssh/detect-bruteforcing
@@ -34,6 +38,17 @@ redef LogAscii::use_json = T;
 # be generated from .env via a small entrypoint when zeek is added to compose.)
 redef Site::local_nets = { 172.20.0.0/24 };
 
+# G6.2 (Gap M): the lab's own PKI (pki-nginx, docker-compose.yml) serves a
+# leaf cert chained to the lab's self-signed Root CA -- not a CA in
+# Zeek's default trust store, so every connection to it would otherwise
+# fire policy/protocols/ssl/validate-certs' SSL::Invalid_Server_Cert
+# notice, every time, forever. That's not a real signal here (the lab
+# PKI's own chain is the point of the exercise), so it's suppressed below
+# for this one host rather than globally -- a genuine cert substitution
+# against a DIFFERENT lab host would still notice normally.
+# Audit-2 Gap #2 pattern: &redef for per-student LAB_NET_PREFIX overrides.
+const pki_host: addr = 172.20.0.70 &redef;
+
 # Tune notice policy
 hook Notice::policy(n: Notice::Info) {
     # Page on critical events
@@ -41,4 +56,12 @@ hook Notice::policy(n: Notice::Info) {
         add n$actions[Notice::ACTION_LOG];
     if (n$note == DnsExfil::DNS_Tunnel_Detected)
         add n$actions[Notice::ACTION_LOG];
+    # G6.2: suppress the lab PKI's own expected self-signed-chain notice.
+    # An empty ActionSet strips every action a default policy already
+    # attached (including the default log action), so the notice never
+    # reaches notice.log at all -- not available to test against a live
+    # Zeek process in this environment; worth an integration.yml spot
+    # check connecting to pki-nginx.
+    if (n$note == SSL::Invalid_Server_Cert && n?$id && n$id$resp_h == pki_host)
+        n$actions = Notice::ActionSet();
 }

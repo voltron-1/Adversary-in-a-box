@@ -2,14 +2,18 @@
 tests/test_pki.py — Unit tests for PKI lab scripts and TLS hardening tools
 """
 
-import sys
 import hashlib
 import json
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 PKI_DIR = Path(__file__).parent.parent / "pki-lab"
+SETUP_CA = PKI_DIR / "setup_ca.sh"
+ISSUE_CERT = PKI_DIR / "issue_cert.sh"
 
 
 class TestCipherAudit(unittest.TestCase):
@@ -135,6 +139,177 @@ class TestChainOfCustody(unittest.TestCase):
 
             result = verify_manifest(custody_path)
             self.assertTrue(result)
+
+
+@unittest.skipUnless(shutil.which("openssl"), "requires the openssl binary")
+class TestIssueCertLedgerAndGuards(unittest.TestCase):
+    """Phase G6.2: issue_cert.sh's reserved-basename/charset guards (Gap M's
+    CA-key-destruction primitive) and the `openssl ca` ledger conversion,
+    run against the real `openssl` binary and a real, freshly-built CA (no
+    stubbing -- this is exactly the kind of multi-step, stateful CLI flow
+    a mock would misrepresent)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp(prefix="aib-pki-test-")
+        cls.pki_dir = Path(cls.tmpdir) / "ca"
+        env = {"PKI_DIR": str(cls.pki_dir), "PATH": "/usr/bin:/bin:/usr/local/bin"}
+        result = subprocess.run(
+            ["sh", str(SETUP_CA)], capture_output=True, text=True, env=env, timeout=60
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"setup_ca.sh failed:\n{result.stdout}\n{result.stderr}")
+        cls.intermediate_key = cls.pki_dir / "intermediate-ca" / "private" / "intermediate.key.pem"
+        cls.root_key = cls.pki_dir / "root-ca" / "private" / "ca.key.pem"
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess:
+        env = {"PKI_DIR": str(self.pki_dir), "PATH": "/usr/bin:/bin:/usr/local/bin"}
+        return subprocess.run(
+            ["sh", str(ISSUE_CERT), *args],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+
+    def _sha256(self, path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    # --------------------------------------------------------- happy path
+    def test_valid_issuance_produces_a_verifiable_cert(self):
+        result = self._run("test-host-01.lab.local")
+        debug = f"\nrc:{result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}\n"
+        self.assertEqual(result.returncode, 0, debug)
+        cert = self.pki_dir / "intermediate-ca" / "certs" / "test-host-01.lab.local.cert.pem"
+        self.assertTrue(cert.exists(), debug)
+        verify = subprocess.run(
+            [
+                "openssl",
+                "verify",
+                "-CAfile",
+                str(self.pki_dir / "intermediate-ca" / "certs" / "ca-chain.cert.pem"),
+                str(cert),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(verify.returncode, 0, verify.stderr)
+
+    def test_valid_issuance_writes_a_real_ca_ledger_entry(self):
+        # G6.2: the whole point -- switched from ad-hoc `x509 -req` (which
+        # never touched setup_ca.sh's own index.txt/serial database) to
+        # `openssl ca`, which does.
+        index = self.pki_dir / "intermediate-ca" / "index.txt"
+        before = index.read_text().count("\n")
+        result = self._run("test-host-02.lab.local")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        after = index.read_text().count("\n")
+        self.assertEqual(after, before + 1)
+        self.assertIn("CN=test-host-02.lab.local", index.read_text())
+
+    def test_valid_issuance_writes_an_issuance_log_line(self):
+        log_path = self.pki_dir / "intermediate-ca" / "issuance.log"
+        result = self._run("test-host-03.lab.local", "172.20.0.99", "test-host-03.example")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+        entry = next(e for e in lines if e["cn"] == "test-host-03.lab.local")
+        self.assertEqual(entry["san_ip"], "172.20.0.99")
+        self.assertEqual(entry["san_dns"], "test-host-03.example")
+        self.assertEqual(entry["cert_type"], "server")
+
+    def test_reissuing_the_same_cn_does_not_fail(self):
+        # unique_subject=no in index.txt.attr -- a student re-running the
+        # exercise for the same hostname must not hit "already exists".
+        first = self._run("test-host-04.lab.local")
+        second = self._run("test-host-04.lab.local")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+
+    # --------------------------------------------- reserved-basename guard
+    def test_refuses_intermediate_ca_basename(self):
+        before = self._sha256(self.intermediate_key)
+        result = self._run("intermediate")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved CA basename", result.stderr)
+        self.assertEqual(self._sha256(self.intermediate_key), before)
+
+    def test_refuses_ca_basename(self):
+        result = self._run("ca")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved CA basename", result.stderr)
+
+    def test_refuses_ca_chain_basename(self):
+        result = self._run("ca-chain")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved CA basename", result.stderr)
+
+    def test_refuses_root_basename(self):
+        # "root" isn't a real basename issue_cert.sh's own paths ever
+        # produce (root-ca/ lives outside intermediate-ca/, where this
+        # script writes) -- refused anyway per the issue's explicit
+        # denylist, and worth confirming the root CA key is untouched too.
+        before = self._sha256(self.root_key)
+        result = self._run("root")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved CA basename", result.stderr)
+        self.assertEqual(self._sha256(self.root_key), before)
+
+    def test_reserved_basename_guard_actually_prevents_key_destruction(self):
+        # Prove the guard has real bite: confirm what an unguarded
+        # `openssl genrsa -out .../intermediate.key.pem` WOULD have done,
+        # against a throwaway copy of the real key, then confirm the
+        # actual intermediate.key.pem the guard protected is untouched.
+        before = self._sha256(self.intermediate_key)
+        scratch = Path(self.tmpdir) / "throwaway-intermediate.key.pem"
+        shutil.copy(self.intermediate_key, scratch)
+        subprocess.run(
+            ["openssl", "genrsa", "-out", str(scratch), "2048"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertNotEqual(
+            self._sha256(scratch),
+            before,
+            "sanity check failed: unguarded genrsa -out didn't overwrite the key",
+        )
+        self.assertEqual(
+            self._sha256(self.intermediate_key),
+            before,
+            "the real intermediate CA key must be untouched by any issue_cert.sh call",
+        )
+
+    # ------------------------------------------------------- charset guard
+    def test_rejects_leading_dash_cn(self):
+        result = self._run("-rf")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_rejects_cn_with_injection_characters(self):
+        for payload in ("evil,CN=fake", "evil;rm -rf /", "evil\nCA:TRUE", "evil/CN=x"):
+            with self.subTest(payload=payload):
+                result = self._run(payload)
+                self.assertNotEqual(result.returncode, 0)
+
+    # Note: no test_rejects_empty_cn -- `CN="${1:-victim-web}"` treats an
+    # empty positional the same as an absent one (POSIX `:-` substitutes
+    # on unset OR null), so CN="" is never actually reachable; it silently
+    # becomes the default instead. The charset guard's own `''` arm is
+    # still there as defensive code, just not something a CLI call can
+    # exercise through this argument-defaulting.
+
+    def test_rejects_invalid_cert_type(self):
+        result = self._run(
+            "test-host-05.lab.local", "172.20.0.30", "test-host-05.lab.local", "evil"
+        )
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_valid_cn_with_dots_hyphens_underscored_still_works(self):
+        result = self._run("valid-host-06.sub.lab.local")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class TestPKIScripts(unittest.TestCase):
