@@ -475,9 +475,9 @@ def _within_canonical_lab(host: str) -> bool:
         return False
 
 
-assert _within_canonical_lab(_target_host(DEFAULT_WEB_TARGET)), (
-    f"DEFAULT_WEB_TARGET {DEFAULT_WEB_TARGET!r} is outside the canonical lab range"
-)
+assert _within_canonical_lab(
+    _target_host(DEFAULT_WEB_TARGET)
+), f"DEFAULT_WEB_TARGET {DEFAULT_WEB_TARGET!r} is outside the canonical lab range"
 
 
 def run_campaign(campaign, technique, target, dry_run, force):
