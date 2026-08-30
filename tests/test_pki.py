@@ -265,7 +265,14 @@ class TestIssueCertLedgerAndGuards(unittest.TestCase):
         # actual intermediate.key.pem the guard protected is untouched.
         before = self._sha256(self.intermediate_key)
         scratch = Path(self.tmpdir) / "throwaway-intermediate.key.pem"
-        shutil.copy(self.intermediate_key, scratch)
+        # copyfile (data only) rather than copy (data + mode bits) -- the
+        # real key is chmod 400, and preserving that onto the throwaway
+        # copy would make the "unguarded genrsa" sanity check below fail
+        # with Permission Denied under a non-root test runner, for the
+        # same reason the guard needs to protect against in the first
+        # place. This scratch file needs to be writable on purpose.
+        shutil.copyfile(self.intermediate_key, scratch)
+        scratch.chmod(0o600)
         subprocess.run(
             ["openssl", "genrsa", "-out", str(scratch), "2048"],
             capture_output=True,

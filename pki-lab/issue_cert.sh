@@ -76,7 +76,13 @@ echo "[+] Issuing $CERT_TYPE certificate for: $CN (IP: $SAN_IP)"
 
 INTERMEDIATE_DIR="$PKI_DIR/intermediate-ca"
 
-# Generate private key
+# Generate private key. A prior issuance for this same CN left its key
+# chmod 400 (read-only, no write bit) -- `openssl genrsa -out` opens the
+# existing file for writing rather than unlinking it first, so re-issuing
+# the same CN as a non-root user would fail with "Permission denied"
+# without this. Removing first only needs write access to the directory,
+# not the file, so it works regardless of the file's own mode.
+rm -f "$INTERMEDIATE_DIR/private/$CN.key.pem"
 openssl genrsa -out "$INTERMEDIATE_DIR/private/$CN.key.pem" 2048
 chmod 400 "$INTERMEDIATE_DIR/private/$CN.key.pem"
 
