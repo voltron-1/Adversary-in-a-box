@@ -98,22 +98,25 @@ docker compose exec red-team python runner.py --campaign full-killchain --force
 
 ## Detection Mapping
 
-| ATT&CK Technique | Detection Method | Log Source |
-|---|---|---|
-| T1595 | Port scan threshold alert | Suricata (`ET SCAN`) / Zeek `port_scan.zeek` |
-| T1566.001 | Email header analysis | Suricata IDS |
-| T1190 | Web application attack | Suricata (`ET WEB_SERVER`) |
-| T1204 | EICAR / dropper advisory | Syslog → Sigma `malware_drop_eicar.yml` |
-| T1557 | Duplicate MAC/IP binding advisory | Syslog → Logstash + Sigma MITM rule |
-| T1110 | Repeated auth failures | Syslog → Sigma `credential_access_brute_force.yml` |
-| T1548.001 / T1548.003 | Sudo/SUID exec logging | Syslog → Sigma `privesc_sudo.yml` |
-| T1550.002 | Pass-the-hash detection | Sigma rule |
-| T1563.001 | SSH anomaly detection | Zeek `ssh.log` |
-| T1048.003 | DNS tunnel detection | Zeek `dns_exfil.zeek` |
-| T1041 | HTTPS exfil advisory | Syslog → Sigma `exfil_https.yml` (¹) |
-| T1486 | Mass file rename / ransom note | Syslog → Sigma `impact_ransomware.yml` |
-| T1053.003 | Cron modification audit | Syslog → Sigma `persistence_cron.yml` |
-| T1098.004 | SSH authorized_keys change | Syslog + file integrity |
+| ATT&CK Technique | Detection Method | Log Source | Real vs. Lab-Sim |
+|---|---|---|---|
+| T1595 | Port scan threshold alert | Suricata (`ET SCAN`) / Zeek `port_scan.zeek` | Real |
+| T1566.001 | Email header analysis | Suricata IDS | Real |
+| T1190 | Web application attack | Suricata (`ET WEB_SERVER`) | Real |
+| T1204 | EICAR / dropper advisory | Syslog → Sigma `malware_drop_eicar.yml` | Lab-instrumentation |
+| T1557 | ARP cache poisoning / duplicate IP-MAC binding | Zeek `arp_spoof.zeek` (²) | Real (²) |
+| T1110 | HTTP login burst | Suricata `ET BRUTE_FORCE HTTP Login Burst` (sid:1000090) | Real |
+| T1110 | Auth-failure advisory | Syslog → Sigma `credential_access_brute_force.yml` | Lab-instrumentation |
+| T1548.001 | SUID binary hunt | *(none yet — tracked in* [#233](https://github.com/voltron-1/Adversary-in-a-box/issues/233)*)* | — |
+| T1548.003 | Sudo abuse | Syslog → Sigma `privesc_sudo.yml` | Lab-instrumentation |
+| T1550.002 | SMB pass-the-hash | Suricata `ET LATERAL_MOVEMENT SMB(2) Pass-the-Hash` (sid:1000040/1000043) | Real |
+| T1563.001 | Internal SSH connection | Zeek `lateral_movement.zeek` | Real |
+| T1048.003 | DNS tunnel: long/high-entropy subdomain, volume, NXDOMAIN rate | Zeek `dns_exfil.zeek` (²) | Real (²) |
+| T1041 | High outbound data volume | Zeek `exfil_volume.zeek` (²) | Real (²) |
+| T1041 | HTTPS exfil advisory | Syslog → Sigma `exfil_https.yml` (¹) | Lab-instrumentation |
+| T1486 | Mass file rename / ransom note advisory | Syslog → Sigma `impact_ransomware.yml` | Lab-instrumentation |
+| T1053.003 | Cron modification advisory | Syslog → Sigma `persistence_cron.yml` | Lab-instrumentation |
+| T1098.004 | SSH authorized_keys change | *(none yet — tracked in* [#233](https://github.com/voltron-1/Adversary-in-a-box/issues/233)*)* | — |
 
 > **Syslog detection path (audit-4 G2b):** lab campaigns simulate attacks
 > without putting matching packets on the wire, so the host-/file-/proxy-
@@ -125,3 +128,16 @@ docker compose exec red-team python runner.py --campaign full-killchain --force
 > `local.rules` key on `$EXTERNAL_NET`, which cannot exist on the
 > `internal: true` lab-net, so they never fire here (kept as production
 > reference). T1041's live detection is the syslog Sigma rule above.
+>
+> **² Real-but-unexercised (G6.1):** `arp_spoof.zeek`, `dns_exfil.zeek`, and
+> `exfil_volume.zeek` are genuine behavioral detectors — no campaign-authored
+> marker string involved — but the campaigns they map to (`mitm.py`,
+> `dns_tunnel.py`, `https_exfil.py`) only ever emit a syslog advisory and
+> never put matching packets on the wire (Docker bridges don't reliably
+> forward injected ARP replies; the lab's `internal: true` networking has no
+> reachable external DNS/HTTPS destination), so none of the three currently
+> fire against this lab's own simulated traffic. They're real, scored
+> infrastructure (`forensics/scoreboard/scorer.py`'s `_zeek_notice_ts()`
+> counts any Zeek notice.log entry toward MTTD) for a genuine attack or a
+> future non-simulated campaign, kept alongside the lab-instrumentation row
+> for the same technique rather than replacing it.

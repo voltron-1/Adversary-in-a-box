@@ -140,7 +140,15 @@ class Scorer:
         # produce scored detections instead of always Missing. These timestamps
         # flow through the same window-correlation + false-positive logic as the
         # Suricata alerts.
-        alert_ts = sorted(alert_ts + self._sigma_detection_ts())
+        alert_ts = alert_ts + self._sigma_detection_ts()
+        # G6.1: Zeek has been generating real behavioral NOTICEs (port scans,
+        # DNS-tunnel entropy, lateral movement, ARP spoofing, exfil volume)
+        # since Phase 4, but nothing ever counted them -- the entire Zeek
+        # investment contributed zero to MTTD scoring. Notices come from Zeek
+        # actually parsing observed packets, the same trust level as a
+        # Suricata alert (not a self-reported syslog marker), so they're
+        # counted directly here rather than gated through ATTACKER_IP/Sigma.
+        alert_ts = sorted(alert_ts + self._zeek_notice_ts())
         return starts, ends, alert_ts, responses
 
     def _sigma_detection_ts(self) -> list[float]:
@@ -173,6 +181,30 @@ class Scorer:
                 ts = _parse_ts(doc.get("@timestamp"))
                 if ts is not None:
                     out.append(ts)
+        return out
+
+    def _zeek_notice_ts(self) -> list[float]:
+        """G6.1: timestamps of zeek-* docs that are Zeek notice.log entries.
+
+        zeek-* mixes every Zeek log Logstash ingests (conn.log, dns.log,
+        http.log, notice.log, ssh.log, ssl.log) into one index (see
+        siem/logstash/pipelines/zeek.conf). `note` is populated only on a
+        notice.log entry (it's the Zeek notice-type name, e.g.
+        "DnsExfil::High_Entropy_Subdomain"), so filtering on its presence
+        selects exactly the NOTICE events Zeek's detection scripts fired --
+        real behavioral detections, not raw connection/protocol telemetry.
+
+        Unlike _sigma_detection_ts, this isn't gated on ATTACKER_IP: a
+        notice comes from Zeek's own protocol analyzers parsing real
+        observed packets, the same trust level as a Suricata alert (which
+        also isn't gated) -- not a self-reported syslog datagram any
+        lab-net peer could forge.
+        """
+        out: list[float] = []
+        for doc in self._hits("zeek-*", {"exists": {"field": "note"}}):
+            ts = _parse_ts(doc.get("@timestamp"))
+            if ts is not None:
+                out.append(ts)
         return out
 
     @staticmethod

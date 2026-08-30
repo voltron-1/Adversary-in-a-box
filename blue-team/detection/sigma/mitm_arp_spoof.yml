@@ -30,10 +30,16 @@ detection:
         - '/tmp/lab_mitm.log'
     condition: spoof_marker and file_target
 falsepositives:
-    - Lab-only — this rule has no production analogue. In a real
-      environment, swap the keyword selection for Zeek's duplicate-MAC
-      notice (Conn::DUPLICATE_REQUESTED_PORT or vendor-specific ARP
-      heuristics).
+    - >-
+      Lab-only — this rule matches the campaign's syslog advisory, not
+      real ARP traffic. The production analogue now exists as
+      blue-team/detection/zeek/scripts/arp_spoof.zeek, which fires a real,
+      generic Duplicate_IP_MAC_Binding notice on any actual ARP cache
+      poisoning attempt (G6.1, #195) -- it just never sees this
+      campaign's own traffic, since mitm.py sends the syslog marker
+      instead of real ARP frames (Docker bridges don't reliably forward
+      client-injected ARP replies). See docs/mitre-attack-map.md's T1557
+      rows for both detection paths.
 level: high
 fields:
     - CommandLine
