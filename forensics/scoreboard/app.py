@@ -4,12 +4,21 @@ Tracks and displays red/blue team scores in real-time.
 """
 
 import hmac
+import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, make_response, render_template, request
 from scorer import Scorer  # OQ-5: MTTD/MTTA tiered scoring
+
+# G1.4: without this, app.logger has no handler attached at import time and
+# the award audit-trail log below (#143) silently never emits -- awards
+# happened but left no trace anywhere a SIEM or operator could see.
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 # P6 (S5): refuse to boot on an unset or known-default SECRET_KEY -- a session
 # secret readable from git is forgeable, so falling back to a literal is unsafe.
