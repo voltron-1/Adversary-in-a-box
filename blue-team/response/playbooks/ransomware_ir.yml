@@ -63,3 +63,13 @@ steps:
     action: cleanup_persistence
     service: red-team
     required: false
+
+  # G4.3 / OQ-3 (ADR 0001): every playbook that isolates a host must restore
+  # it before the playbook terminates -- this playbook isolated
+  # {affected_host} above but had no path back to lab-net, mirroring the
+  # fix already in lateral_movement_ir.yml.
+  - name: "Restore affected host to lab-net"
+    action: run_script
+    script: restore_host.sh
+    args: ["{affected_host}"]
+    required: true
