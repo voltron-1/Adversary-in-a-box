@@ -21,11 +21,55 @@ if [[ -z "$TARGET" ]]; then
     exit 1
 fi
 
+# G4.4: idempotent, post-condition-checked network moves. The previous
+# version called `docker network connect`/`disconnect` unconditionally --
+# re-running against an already-isolated host hit "already exists" under
+# `set -e` and aborted before the matching disconnect ever ran, which could
+# leave a host attached to BOTH networks simultaneously (see
+# restore_host.sh's symmetric bug for the same failure class). Check actual
+# membership via `docker network inspect` first, and verify the resulting
+# state before declaring success rather than trusting the commands above
+# succeeded.
+is_connected() {
+    local network="$1" target="$2"
+    docker network inspect "$network" --format '{{range .Containers}}{{.Name}}
+{{end}}' 2>/dev/null | grep -qxF "$target"
+}
+
+connect_network() {
+    local network="$1" target="$2"
+    if is_connected "$network" "$target"; then
+        echo "[IR] ${target} already connected to ${network}; skipping."
+        return 0
+    fi
+    docker network connect "$network" "$target"
+}
+
+disconnect_network() {
+    local network="$1" target="$2"
+    if ! is_connected "$network" "$target"; then
+        echo "[IR] ${target} already disconnected from ${network}; skipping."
+        return 0
+    fi
+    docker network disconnect "$network" "$target"
+}
+
 echo "[IR] Connecting ${TARGET} to ${QUARANTINE_NET}..."
-docker network connect "$QUARANTINE_NET" "$TARGET"
+connect_network "$QUARANTINE_NET" "$TARGET"
 
 echo "[IR] Disconnecting ${TARGET} from ${LAB_NET}..."
-docker network disconnect "$LAB_NET" "$TARGET"
+disconnect_network "$LAB_NET" "$TARGET"
+
+# Post-condition check: verify the actual resulting network membership
+# rather than assuming success because the commands above didn't error.
+if ! is_connected "$QUARANTINE_NET" "$TARGET"; then
+    echo "[ERROR] ${TARGET} is not on ${QUARANTINE_NET} after isolation." >&2
+    exit 1
+fi
+if is_connected "$LAB_NET" "$TARGET"; then
+    echo "[ERROR] ${TARGET} is still on ${LAB_NET} after isolation." >&2
+    exit 1
+fi
 
 EVIDENCE_DIR="${EVIDENCE_DIR:-/evidence}"
 mkdir -p "$EVIDENCE_DIR"
