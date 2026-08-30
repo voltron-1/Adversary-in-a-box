@@ -134,6 +134,19 @@ jobs:
         scandir: ./scripts
         severity: warning
 
+    - name: Install Suricata + scapy for the pcap-replay harness
+      # G5.1: tests/test_suricata_pcap_replay.py replays synthetic pcaps
+      # through the real `suricata` binary to verify local.rules sids
+      # actually fire. Neither suricata nor scapy is a runtime dependency
+      # of any subproject, so install them only where the suite runs (one
+      # matrix row, same pattern as the ShellCheck/docker-build steps
+      # above) -- other rows skip the suite via its own skipUnless guard.
+      if: matrix.python-version == '3.11'
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq suricata
+        pip install scapy
+
     - name: Run all tests with coverage
       # Discover every test_*.py under tests/ — covers test_campaigns,
       # test_playbooks, test_pki, and test_scorer (Gap #6 audit fix).
