@@ -39,20 +39,44 @@ class IsolateRestoreHarness:
     """Stubs `docker` on PATH with per-network membership state files under
     tmpdir/state/<network>.members. `network connect`/`disconnect` fail
     exactly like the real daemon on a redundant call, so the script under
-    test must actually guard against calling them redundantly."""
+    test must actually guard against calling them redundantly.
 
-    def __init__(self, tmpdir: Path, *, initial_membership: dict[str, list[str]] | None = None):
+    Also stubs `docker inspect --format '...' -- <target>` (the G4.5
+    infra-service check) from a tmpdir/labels/<target>.label file, one
+    per container that should report a com.docker.compose.service label;
+    an absent file means "no label" (not an infra service).
+
+    Positional argument layout below matches exactly what isolate_host.sh/
+    restore_host.sh emit post-G4.5 (`--` inserted before every positional,
+    `--format` always precedes it):
+        network connect -- NET CONTAINER
+        network disconnect -- NET CONTAINER
+        network inspect --format FMT -- NET
+        inspect --format FMT -- TARGET
+    """
+
+    def __init__(
+        self,
+        tmpdir: Path,
+        *,
+        initial_membership: dict[str, list[str]] | None = None,
+        labels: dict[str, str] | None = None,
+    ):
         self.tmpdir = tmpdir
         self.bin = tmpdir / "bin"
         self.bin.mkdir()
         self.state_dir = tmpdir / "state"
         self.state_dir.mkdir()
+        self.labels_dir = tmpdir / "labels"
+        self.labels_dir.mkdir()
         self.evidence_dir = tmpdir / "evidence"
 
         for network, members in (initial_membership or {}).items():
             (self.state_dir / f"{network}.members").write_text(
                 "\n".join(members) + ("\n" if members else "")
             )
+        for container, service_label in (labels or {}).items():
+            (self.labels_dir / f"{container}.label").write_text(service_label)
 
         _make_stub(
             self.bin / "docker",
@@ -60,8 +84,9 @@ class IsolateRestoreHarness:
                 #!/usr/bin/env bash
                 set -euo pipefail
                 STATE_DIR="{self.state_dir}"
+                LABELS_DIR="{self.labels_dir}"
                 if [[ "$1 $2" == "network connect" ]]; then
-                    net="$3"; container="$4"
+                    net="$4"; container="$5"
                     f="$STATE_DIR/$net.members"
                     touch "$f"
                     if grep -qxF "$container" "$f"; then
@@ -71,7 +96,7 @@ class IsolateRestoreHarness:
                     echo "$container" >> "$f"
                     exit 0
                 elif [[ "$1 $2" == "network disconnect" ]]; then
-                    net="$3"; container="$4"
+                    net="$4"; container="$5"
                     f="$STATE_DIR/$net.members"
                     touch "$f"
                     if ! grep -qxF "$container" "$f"; then
@@ -82,10 +107,15 @@ class IsolateRestoreHarness:
                     mv "$f.tmp" "$f"
                     exit 0
                 elif [[ "$1 $2" == "network inspect" ]]; then
-                    net="$3"
+                    net="$6"
                     f="$STATE_DIR/$net.members"
                     touch "$f"
                     cat "$f"
+                    exit 0
+                elif [[ "$1" == "inspect" ]]; then
+                    target="$5"
+                    f="$LABELS_DIR/$target.label"
+                    [[ -f "$f" ]] && cat "$f"
                     exit 0
                 fi
                 exit 0
@@ -148,6 +178,44 @@ class TestIsolateHost(unittest.TestCase):
             self.assertIn("victim-web", h.members(QUARANTINE_NET), debug)
             self.assertNotIn("victim-web", h.members(LAB_NET), debug)
 
+    def test_isolate_rejects_target_with_disallowed_characters(self) -> None:
+        # G4.5 / CWE-88: a target that isn't charset-safe must never reach
+        # docker/bash argv, regardless of what it looks like.
+        with tempfile.TemporaryDirectory() as tmp:
+            h = IsolateRestoreHarness(Path(tmp), initial_membership={LAB_NET: ["victim-web"]})
+            result = h.run(ISOLATE, "victim-web; rm -rf /")
+            debug = f"\nrc:{result.returncode}\nstderr:\n{result.stderr}\n"
+
+            self.assertNotEqual(result.returncode, 0, debug)
+            self.assertIn("victim-web", h.members(LAB_NET), debug)
+            self.assertEqual(h.members(QUARANTINE_NET), [], debug)
+
+    def test_isolate_rejects_leading_dash_target(self) -> None:
+        # A leading '-' is charset-valid but would reach docker/bash argv
+        # as a flag (CWE-88 argument injection) absent the `--` guard.
+        with tempfile.TemporaryDirectory() as tmp:
+            h = IsolateRestoreHarness(Path(tmp), initial_membership={LAB_NET: ["victim-web"]})
+            result = h.run(ISOLATE, "--rm")
+            debug = f"\nrc:{result.returncode}\nstderr:\n{result.stderr}\n"
+
+            self.assertNotEqual(result.returncode, 0, debug)
+
+    def test_isolate_refuses_infrastructure_service(self) -> None:
+        # G4.5: isolate/restore must never touch the ES/Logstash/Kibana/
+        # blue-team infra containers, even if given a charset-safe name.
+        with tempfile.TemporaryDirectory() as tmp:
+            h = IsolateRestoreHarness(
+                Path(tmp),
+                initial_membership={LAB_NET: ["elasticsearch"]},
+                labels={"elasticsearch": "elasticsearch"},
+            )
+            result = h.run(ISOLATE, "elasticsearch")
+            debug = f"\nrc:{result.returncode}\nstderr:\n{result.stderr}\n"
+
+            self.assertNotEqual(result.returncode, 0, debug)
+            self.assertIn("elasticsearch", h.members(LAB_NET), debug)
+            self.assertEqual(h.members(QUARANTINE_NET), [], debug)
+
 
 @unittest.skipIf(
     sys.platform == "win32",
@@ -205,6 +273,35 @@ class TestRestoreHost(unittest.TestCase):
                 h.members(QUARANTINE_NET),
                 "should have finished the disconnect" + debug,
             )
+
+    def test_restore_rejects_target_with_disallowed_characters(self) -> None:
+        # G4.5 / CWE-88: same guard applies symmetrically to restore.
+        with tempfile.TemporaryDirectory() as tmp:
+            h = IsolateRestoreHarness(
+                Path(tmp), initial_membership={QUARANTINE_NET: ["victim-web"]}
+            )
+            result = h.run(RESTORE, "$(whoami)")
+            debug = f"\nrc:{result.returncode}\nstderr:\n{result.stderr}\n"
+
+            self.assertNotEqual(result.returncode, 0, debug)
+            self.assertIn("victim-web", h.members(QUARANTINE_NET), debug)
+            self.assertEqual(h.members(LAB_NET), [], debug)
+
+    def test_restore_refuses_infrastructure_service(self) -> None:
+        # G4.5: restore must never touch infra containers either, in case
+        # one was ever (mis)targeted for isolation in the first place.
+        with tempfile.TemporaryDirectory() as tmp:
+            h = IsolateRestoreHarness(
+                Path(tmp),
+                initial_membership={QUARANTINE_NET: ["kibana"]},
+                labels={"kibana": "kibana"},
+            )
+            result = h.run(RESTORE, "kibana")
+            debug = f"\nrc:{result.returncode}\nstderr:\n{result.stderr}\n"
+
+            self.assertNotEqual(result.returncode, 0, debug)
+            self.assertIn("kibana", h.members(QUARANTINE_NET), debug)
+            self.assertEqual(h.members(LAB_NET), [], debug)
 
 
 if __name__ == "__main__":
