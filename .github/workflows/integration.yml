@@ -142,26 +142,23 @@ jobs:
         if [ -n "$fail" ]; then exit 1; fi
         echo "[kibana] all dashboards imported successfully"
 
-    - name: Run integration test
-      env:
-        AIB_RUN_INTEGRATION: "1"
-        EVIDENCE_DIR: ${{ runner.temp }}/evidence
-      run: |
-        mkdir -p "$EVIDENCE_DIR"
-        python -m unittest discover -s tests/integration -v
-
     - name: TEMP -- Phase G0.1 runtime confirmation evidence (#168)
       # Investigative-only, does not gate the job. Answers the four
-      # environment-specific questions G0.1 gates later phases on.
+      # environment-specific questions G0.1 gates later phases on. MUST run
+      # here, before "Run integration test" -- that test's tearDownClass does
+      # `docker compose down -v`, so Q2/Q3 (which need live containers)
+      # previously came back "service not running" when this step ran after
+      # it (see run 33291203166: Q1/Q4 answered, Q2/Q3 empty).
       # This step is removed again once findings/20260813-runtime-confirmation.md
       # is written from its output -- see docs/20260813-remediation-plan.md.
       if: always()
       run: |
-        echo "::group::Q1 -- checksum-validation + invalid_checksum counters"
-        docker compose exec -T suricata suricata --dump-config 2>/dev/null | grep -i checksum || echo "(dump-config unavailable)"
-        echo "--- eve.json stats events (checksum-related fields) ---"
-        grep -o '"tcp":{[^}]*}' /var/log/suricata/eve.json 2>/dev/null | tail -5 || echo "(no host-mounted eve.json found)"
-        grep -o '"checksum[^,}]*' /var/log/suricata/eve.json 2>/dev/null | sort | uniq -c | tail -20 || true
+        echo "::group::Q1 -- checksum-validation setting + invalid_checksum counters"
+        echo "--- configured setting ---"
+        grep -n "checksum-validation" blue-team/detection/suricata/suricata.yaml || true
+        echo "--- stats.log (host-mounted /var/log/suricata, root-owned) ---"
+        sudo grep -i "checksum" /var/log/suricata/stats.log 2>/dev/null | tail -10 \
+          || echo "(no checksum counters found in stats.log)"
         echo "::endgroup::"
 
         echo "::group::Q2 -- container-to-gateway INPUT path (internal:true coverage)"
@@ -189,6 +186,14 @@ jobs:
         find /tmp/g01 -name '*.sh' -exec bash -n {} \; -exec echo "  [ok] {}" \;
         echo "find exit code: $?"
         echo "::endgroup::"
+
+    - name: Run integration test
+      env:
+        AIB_RUN_INTEGRATION: "1"
+        EVIDENCE_DIR: ${{ runner.temp }}/evidence
+      run: |
+        mkdir -p "$EVIDENCE_DIR"
+        python -m unittest discover -s tests/integration -v
 
     - name: Dump compose logs on failure
       if: failure()
