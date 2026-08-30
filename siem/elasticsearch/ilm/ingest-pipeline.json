@@ -1,0 +1,11 @@
+{
+  "description": "G1.3: stamps event.ingested from Elasticsearch's own _ingest.timestamp at write time. Unlike @timestamp -- just a field in the poster's request body -- event.ingested cannot be forged by a lab-net peer, letting the scorer detect a backdated @timestamp on a red-team-events-* doc.",
+  "processors": [
+    {
+      "set": {
+        "field": "event.ingested",
+        "value": "{{{_ingest.timestamp}}}"
+      }
+    }
+  ]
+}
