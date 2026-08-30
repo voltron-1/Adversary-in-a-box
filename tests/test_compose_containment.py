@@ -121,9 +121,7 @@ class TestNetworkAirGap(unittest.TestCase):
         for name in ALLOWED_NETWORKS:
             with self.subTest(network=name):
                 self.assertIn(name, networks, f"{name} did not resolve in compose config")
-                self.assertTrue(
-                    networks[name].get("internal"), f"{name} is not internal:true"
-                )
+                self.assertTrue(networks[name].get("internal"), f"{name} is not internal:true")
 
 
 if __name__ == "__main__":
