@@ -10,7 +10,10 @@ xpack.security.enabled: false
 xpack.monitoring.collection.enabled: true
 
 # Index settings
-action.auto_create_index: true
+# G1.1: restrict auto-creation to the lab's known index families so a
+# forged write can't index-squat an arbitrary name. The trailing "-*"
+# denies everything else.
+action.auto_create_index: "suricata-*,zeek-*,syslog-*,red-team-events-*,ir-events-*,.monitoring-*,-*"
 indices.memory.index_buffer_size: 10%
 
 # Logging

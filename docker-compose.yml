@@ -94,7 +94,7 @@ services:
     hostname: defender
     profiles: ["ir"]
     ports:
-      - "${BLUE_TEAM_PORT:-5000}:5000"
+      - "${BIND_ADDR:-127.0.0.1}:${BLUE_TEAM_PORT:-5000}:5000"
     networks:
       lab-net:
         ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.20
@@ -273,7 +273,7 @@ services:
       lab-net:
         ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.50
     ports:
-      - "${ELASTICSEARCH_PORT:-9200}:9200"
+      - "${BIND_ADDR:-127.0.0.1}:${ELASTICSEARCH_PORT:-9200}:9200"
     volumes:
       - es-data:/usr/share/elasticsearch/data
       - ./siem/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
@@ -416,7 +416,7 @@ services:
       lab-net:
         ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.52
     ports:
-      - "${KIBANA_PORT:-5601}:5601"
+      - "${BIND_ADDR:-127.0.0.1}:${KIBANA_PORT:-5601}:5601"
     volumes:
       - ./siem/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
       - kibana-data:/usr/share/kibana/data
@@ -445,7 +445,7 @@ services:
       context: ./forensics/scoreboard
     hostname: scoreboard
     ports:
-      - "${SCOREBOARD_PORT:-5002}:5002"
+      - "${BIND_ADDR:-127.0.0.1}:${SCOREBOARD_PORT:-5002}:5002"
     networks:
       lab-net:
         ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.60
@@ -475,6 +475,9 @@ services:
       # G1.3: matches red-team's own ATTACKER_IP so scorer.py can reject a
       # syslog "detection" forged by any other lab-net peer.
       - ATTACKER_IP=${LAB_NET_PREFIX:-172.20.0}.10
+      # G1.4: matches red-team/blue-team's LOG_LEVEL convention so the award
+      # audit-trail log (#143) actually reaches container logs.
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - elasticsearch
     restart: unless-stopped
