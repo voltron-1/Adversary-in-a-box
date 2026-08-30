@@ -107,10 +107,21 @@ jobs:
       # Phase F12: ShellCheck catches semantic issues; `bash -n` catches
       # raw parser errors (missing fi/done/etc) that ShellCheck doesn't
       # always flag. Cheap belt-and-suspenders.
+      #
+      # G0.1 finding: `find ... -exec bash -n {} \;` does NOT propagate a
+      # failed -exec's exit status to find's own exit code -- find only
+      # fails on ITS OWN errors (e.g. a bad path), so this step passed
+      # green even when a script had a genuine syntax error. Verified
+      # locally: `find . -exec bash -n {} \;` against a deliberately
+      # broken script printed the syntax error to stderr but still exited
+      # 0. Track failures explicitly instead.
       if: matrix.python-version == '3.11'
       run: |
-        find scripts blue-team pki-lab target-env -type f -name '*.sh' \
-            -exec bash -n {} \; -exec echo "  [ok] {}" \;
+        fail=0
+        while IFS= read -r -d '' f; do
+          bash -n "$f" && echo "  [ok] $f" || fail=1
+        done < <(find scripts blue-team pki-lab target-env -type f -name '*.sh' -print0)
+        exit "$fail"
 
     - name: ShellCheck lab scripts
       # ShellCheck is Python-agnostic, so run it once rather than on every
