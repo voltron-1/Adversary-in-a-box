@@ -244,6 +244,12 @@ reports/*
 !reports/.gitkeep
 .coverage
 
+# G3.4: durable audit trail for AIB_SKIP_PREFLIGHT bypass usage
+# (scripts/lab/start.sh). Lives outside evidence/ and reports/ on purpose --
+# reset.sh wipes both of those, and this record needs to survive a reset.
+logs/*
+!logs/.gitkeep
+
 # Per-run artifacts from `runner.py` -- the red-team container writes
 # campaign_*.json here as root, which leaks into `git status` after a
 # kill-chain run.

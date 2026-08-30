@@ -289,6 +289,9 @@ class TestStartScript(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2, debug)
         self.assertIn("preflight missing", result.stderr, debug)
+        # G3.4: don't surface the bypass as "the fix" for a routine
+        # permissions error -- that invites reaching for it by habit.
+        self.assertNotIn("AIB_SKIP_PREFLIGHT", result.stderr, debug)
 
     def test_skip_preflight_env_honored(self) -> None:
         # With AIB_SKIP_PREFLIGHT=1 + preflight deleted, script still
@@ -298,9 +301,21 @@ class TestStartScript(unittest.TestCase):
             h = StartScriptHarness(Path(tmp), [ps])
             (Path(tmp) / "scripts" / "safety" / "egress_test.sh").unlink()
             result = h.run()  # AIB_SKIP_PREFLIGHT=1 by default
+            audit_log = Path(tmp) / "logs" / "preflight-bypass-audit.log"
+            debug = f"\nrc:{result.returncode}\nstderr:\n{result.stderr}\n"
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("AIB_SKIP_PREFLIGHT=1", result.stderr)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("AIB_SKIP_PREFLIGHT=1", result.stderr)
+            # G3.4: durable audit record for bypass usage, written outside
+            # evidence/ and reports/ specifically because reset.sh wipes both.
+            self.assertTrue(
+                audit_log.exists(), f"expected a bypass audit log at {audit_log}{debug}"
+            )
+            self.assertRegex(
+                audit_log.read_text(),
+                r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z host=\S+ user=\S+ cwd=\S+",
+                debug,
+            )
 
     def test_extra_args_forward_to_compose_up(self) -> None:
         ps = _ps_blob([{"Service": "es", "State": "running", "Health": "healthy"}])

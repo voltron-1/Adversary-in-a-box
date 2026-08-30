@@ -31,14 +31,28 @@ fi
 
 if [[ -z "${AIB_SKIP_PREFLIGHT:-}" ]]; then
     if [[ ! -x "$PREFLIGHT" ]]; then
+        # G3.4: no mention of AIB_SKIP_PREFLIGHT here -- surfacing the bypass
+        # as the fix for a routine permissions error invites reaching for it
+        # by habit. `chmod +x` is the actual fix; the escape hatch stays
+        # documented only in this script's own header and docs/THREAT_MODEL.md.
         echo "[ERROR] preflight missing or not executable: $PREFLIGHT" >&2
-        echo "        Run 'chmod +x $PREFLIGHT' or set AIB_SKIP_PREFLIGHT=1." >&2
+        echo "        Run 'chmod +x $PREFLIGHT'." >&2
         exit 2
     fi
     echo "[start] running air-gap preflight (scripts/safety/egress_test.sh --strict)..."
     "$PREFLIGHT" --strict
 else
     echo "[start] AIB_SKIP_PREFLIGHT=1 — skipping air-gap preflight (NOT RECOMMENDED)" >&2
+    # G3.4: a durable audit trail for bypass usage. Lives in logs/, not
+    # evidence/ or reports/, specifically because scripts/lab/reset.sh wipes
+    # both of those -- this record must survive a mid-class reset so an
+    # instructor auditing "was the air-gap check ever skipped" afterward
+    # still has an answer.
+    mkdir -p "${ROOT_DIR}/logs"
+    printf '%s host=%s user=%s cwd=%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(hostname 2>/dev/null || echo unknown)" \
+        "${USER:-unknown}" "$PWD" \
+        >> "${ROOT_DIR}/logs/preflight-bypass-audit.log"
 fi
 
 echo "[start] preflight clean; bringing the lab up..."
