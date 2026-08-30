@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 SURICATA_DIR = REPO_ROOT / "blue-team" / "detection" / "suricata"
 SURICATA_YAML = SURICATA_DIR / "suricata.yaml"
 LOCAL_RULES = SURICATA_DIR / "local.rules"
+THRESHOLD_CONFIG = SURICATA_DIR / "threshold.config"
 
 HOME_A = "172.20.0.10"  # in-lab host (matches suricata.yaml's HOME_NET 172.20.0.0/24)
 HOME_B = "172.20.0.30"  # in-lab host
@@ -264,10 +265,10 @@ def _build_cases() -> dict:
     }
 
     # --- PRIVILEGE ESCALATION ---
-    cases["sudo_l_enumeration"] = {
-        "build": lambda: tcp_conversation(HOME_A, 51006, HOME_B, 4444, b"sudo -l\n"),
-        "expect_fire": {1000030},
-    }
+    # G5.5 (#194): sid:1000030 deleted -- see local.rules for why (matched
+    # any tcp payload containing "sudo"/"-l" between lab hosts, alert-storm
+    # risk, and T1548.003 doesn't reliably reach the wire as plaintext in
+    # the first place). No replacement case: there is nothing left to test.
 
     # --- LATERAL MOVEMENT ---
     cases["smb_pass_the_hash"] = {
@@ -284,7 +285,35 @@ def _build_cases() -> dict:
         ),
         "expect_fire": {1000043},
     }
+    cases["smb2_multi_session_rate_limited"] = {
+        # G5.5 (#194): sid:1000040/1000043 carry no inline threshold (each
+        # SMB PDU restarts the |FE|SMB magic match), so threshold.config
+        # caps it to one alert per source per minute -- this pcap sends 3
+        # separate SMB2 sessions (2 PDUs each, 6 total matches) and must
+        # still produce only ONE 1000043 alert. This exact regression
+        # (threshold.config for a sid silently REPLACING rather than
+        # supplementing that sid's own inline threshold) is why 1000040/
+        # 1000043, not 1000041/1000042, got the threshold.config treatment
+        # -- confirmed the hard way while building this fix.
+        "build": lambda: [
+            pkt
+            for i in range(3)
+            for pkt in tcp_conversation(
+                OUTSIDE_A,
+                51100 + i,
+                HOME_B,
+                445,
+                b"\xfeSMBfirst_pdu",
+                b"\xfeSMBresponse_pdu",
+            )
+        ],
+        "expect_fire": {1000043},
+        "expect_count": {1000043: 1},
+    }
     cases["ssh_bruteforce_burst"] = {
+        # G5.5 (#194): sid:1000041 rekeyed from claiming "auth failures"
+        # (impossible for Suricata to see on encrypted SSH) to a
+        # connection-attempt-burst signal it can actually observe.
         "build": lambda: syn_packets(HOME_A, HOME_B, 22, 6, dport_fixed=22),
         "expect_fire": {1000041, 1000042},
     }
@@ -321,10 +350,10 @@ def _build_cases() -> dict:
     }
 
     # --- PERSISTENCE ---
-    cases["crontab_modification"] = {
-        "build": lambda: tcp_conversation(HOME_A, 51010, HOME_B, 4444, b"crontab -e\n"),
-        "expect_fire": {1000060},
-    }
+    # G5.5 (#194): sid:1000060 deleted -- same class of bug as 1000030
+    # above (matched any tcp payload containing "crontab" between lab
+    # hosts; T1053.003 is a host-level file-write event). No replacement
+    # case.
 
     # --- MALWARE / GENERAL (production-reference only; see local.rules'
     # own audit-4 G3d notes -- these still deserve harness coverage since
@@ -385,13 +414,20 @@ def _build_cases() -> dict:
 
 class SuricataPcapHarness:
     """Writes a pcap, replays it through the real `suricata` binary against
-    the lab's own suricata.yaml + local.rules, and returns the set of sids
-    that fired (from eve.json's alert events)."""
+    the lab's own suricata.yaml + local.rules + threshold.config, and
+    returns how many times each sid fired (from eve.json's alert events).
+
+    `-S`/`--set threshold-file=` override suricata.yaml's container paths
+    (/etc/suricata/rules/...) with this repo checkout's own files -- the
+    same reason `-S` was already needed for local.rules. Without the
+    threshold-file override, suricata would try (and fail) to load
+    /etc/suricata/rules/threshold.config, which doesn't exist outside the
+    real container."""
 
     def __init__(self, tmpdir: Path):
         self.tmpdir = tmpdir
 
-    def fired_sids(self, packets: list) -> set[int]:
+    def fired_sid_counts(self, packets: list) -> dict[int, int]:
         from scapy.all import wrpcap
 
         pcap_path = self.tmpdir / "capture.pcap"
@@ -406,6 +442,8 @@ class SuricataPcapHarness:
                 str(SURICATA_YAML),
                 "-S",
                 str(LOCAL_RULES),
+                "--set",
+                f"threshold-file={THRESHOLD_CONFIG}",
                 "-r",
                 str(pcap_path),
                 "-l",
@@ -422,16 +460,20 @@ class SuricataPcapHarness:
                 f"suricata exited {proc.returncode} replaying {pcap_path}:\n{proc.stderr}"
             )
         eve_path = log_dir / "eve.json"
-        sids: set[int] = set()
+        counts: dict[int, int] = {}
         if not eve_path.exists():
-            return sids
+            return counts
         for line in eve_path.read_text().splitlines():
             if not line.strip():
                 continue
             doc = json.loads(line)
             if doc.get("event_type") == "alert":
-                sids.add(doc["alert"]["signature_id"])
-        return sids
+                sid = doc["alert"]["signature_id"]
+                counts[sid] = counts.get(sid, 0) + 1
+        return counts
+
+    def fired_sids(self, packets: list) -> set[int]:
+        return set(self.fired_sid_counts(packets))
 
 
 @unittest.skipUnless(_SCAPY_AVAILABLE and _SURICATA_BIN, _SKIP_REASON)
@@ -444,7 +486,8 @@ class TestSuricataPcapReplay(unittest.TestCase):
                     harness = SuricataPcapHarness(Path(tmp) / name)
                     (Path(tmp) / name).mkdir()
                     packets = case["build"]()
-                    fired = harness.fired_sids(packets)
+                    counts = harness.fired_sid_counts(packets)
+                    fired = set(counts)
 
                     expect_fire = case["expect_fire"]
                     missing = expect_fire - fired
@@ -462,6 +505,14 @@ class TestSuricataPcapReplay(unittest.TestCase):
                         f"{name}: sid(s) {sorted(unexpected)} fired but were expected absent "
                         f"(fired: {sorted(fired)})",
                     )
+
+                    for sid, expected_count in case.get("expect_count", {}).items():
+                        self.assertEqual(
+                            counts.get(sid, 0),
+                            expected_count,
+                            f"{name}: sid {sid} fired {counts.get(sid, 0)} time(s), "
+                            f"expected exactly {expected_count} (all counts: {counts})",
+                        )
 
     def test_case_manifest_covers_every_sid_in_local_rules(self) -> None:
         # Guard against a new rule shipping with no corresponding pcap case

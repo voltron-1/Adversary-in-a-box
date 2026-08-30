@@ -83,7 +83,7 @@ Pick the most recent alert. The interesting fields:
 | Field | What to look at |
 |---|---|
 | `@timestamp` | When the alert fired (anchors MTTD calculation). |
-| `alert.signature` | Human-readable rule name (e.g. `ET PERSISTENCE Crontab Modification Detected`). |
+| `alert.signature` | Human-readable rule name (e.g. `ET RANSOMWARE Lab Ransom Note Marker`). |
 | `alert.signature_id` | Maps to a `sid:` in `blue-team/detection/suricata/local.rules`. |
 | `alert.severity` | 1=critical, 2=high, 3=medium, 4=low (Suricata convention). |
 | `src_ip` / `dest_ip` | Attacker + victim. Compare to `LAB_NET_PREFIX` to confirm it's lab traffic. |
@@ -91,7 +91,7 @@ Pick the most recent alert. The interesting fields:
 Cross-reference the `signature_id` against the local rules file:
 
 ```bash
-grep "sid:1000060" blue-team/detection/suricata/local.rules
+grep "sid:1000110" blue-team/detection/suricata/local.rules
 ```
 
 For Sigma rules (more abstract, OS-event-based), use the per-rule KQL
@@ -107,7 +107,7 @@ the one matching the alert pattern. Examples:
 | You saw... | Run... |
 |---|---|
 | Phishing SMTP rule (`sid:1000010`) | `phishing_ir.yml` |
-| SMB / SSH lateral (`sid:1000040`, `1000041`, `1000042`) | `lateral_movement_ir.yml` |
+| SMB / SSH lateral (`sid:1000040`, `1000043`, `1000041`, `1000042`) | `lateral_movement_ir.yml` |
 | DNS tunnel / HTTPS exfil (`sid:1000050`, `1000051`, `1000052`) | `data_exfil_ir.yml` |
 | Ransom-note marker (`sid:1000110`) | `ransomware_ir.yml` |
 

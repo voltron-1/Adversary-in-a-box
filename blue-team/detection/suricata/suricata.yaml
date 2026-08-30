@@ -96,6 +96,10 @@ pcap:
 rule-files:
   - /etc/suricata/rules/local.rules
 
+# G5.5 (Gap K): operator-tunable alert-volume control, separate from the
+# per-rule threshold:/flow: keywords baked into local.rules itself.
+threshold-file: /etc/suricata/rules/threshold.config
+
 host-os-policy:
   linux: [0.0.0.0/0]
 

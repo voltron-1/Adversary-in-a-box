@@ -50,7 +50,18 @@ alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Absolute Path File Read"
 # ---------------------------------------------------------------------------
 # PRIVILEGE ESCALATION — T1548
 # ---------------------------------------------------------------------------
-alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET EXPLOIT Possible Privilege Escalation sudo -l enumeration"; content:"sudo"; content:"-l"; classtype:attempted-admin; sid:1000030; rev:1;)
+# G5.5 (Gap K): sid:1000030 (deleted) matched ANY tcp payload between two
+# HOME_NET hosts containing the raw substrings "sudo" and "-l" -- no port,
+# no app-layer constraint, no direction beyond host-to-host. It fired on
+# unrelated traffic that happened to contain both substrings just as
+# readily as on a real `sudo -l` invocation, and `sudo -l` itself is a
+# host-level process-execution event that was never reliably going to
+# appear as a distinctive plaintext substring on the wire in the first
+# place (a real SSH session carrying it is encrypted). T1548.003 belongs
+# behind host telemetry (process/exec events), not a Suricata content
+# match -- see docs/20260813-remediation-plan.md's G-INFRA.1. Training
+# operators to associate this alert with a real detection was worse than
+# having no detection at all.
 
 # ---------------------------------------------------------------------------
 # LATERAL MOVEMENT — T1550.002 Pass the Hash | T1563.001 SSH Hijack
@@ -64,8 +75,22 @@ alert tcp any any -> $HOME_NET 445 (msg:"ET LATERAL_MOVEMENT SMB Pass-the-Hash A
 # and enable the smb app-layer parser (below, suricata.yaml) for visibility
 # even where no sid is written against it yet.
 alert tcp any any -> $HOME_NET 445 (msg:"ET LATERAL_MOVEMENT SMB2 Pass-the-Hash Attempt"; content:"|FE|SMB"; depth:4; classtype:policy-violation; sid:1000043; rev:1;)
-alert tcp any any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Multiple SSH Authentication Failures"; threshold:type both,track by_src,count 5,seconds 30; classtype:attempted-user; sid:1000041; rev:1;)
-alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH Connection - Possible Hijacking"; classtype:policy-violation; sid:1000042; rev:1;)
+# G5.5 (Gap K): rekeyed. The old rule counted every TCP packet to port 22
+# toward its "authentication failures" threshold -- SSH is encrypted past
+# the initial handshake, so Suricata cannot actually see whether auth
+# succeeded or failed, and any single active SSH session's ordinary packet
+# flow (far more than 5 packets) tripped it as if it were 5+ separate
+# failed logins. Restricted to `flags:S` (one packet per real connection
+# attempt) so the count reflects connection attempts, which is both what
+# Suricata can actually observe and a real brute-force/scan indicator.
+alert tcp any any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT SSH Connection Attempt Burst (possible brute force)"; flags:S; threshold:type both,track by_src,count 5,seconds 30; classtype:attempted-user; sid:1000041; rev:2;)
+# G5.5 (Gap K): the old rule matched every packet of every established
+# internal SSH session (no flow/threshold constraint), alert-storming on
+# completely ordinary internal SSH use. `flow:established,to_server`
+# restricts matching to the client->server direction of a completed
+# handshake; the threshold collapses a session's many packets into one
+# alert per source per minute instead of one per packet.
+alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH Connection - Possible Hijacking"; flow:established,to_server; threshold:type limit,track by_src,count 1,seconds 60; classtype:policy-violation; sid:1000042; rev:2;)
 
 # ---------------------------------------------------------------------------
 # EXFILTRATION — T1048.003 DNS Tunnel | T1041 HTTPS C2
@@ -98,7 +123,14 @@ alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"ET C2 Suspicious HTTPS Beaco
 # ---------------------------------------------------------------------------
 # PERSISTENCE — T1053.003 Cron | T1098.004 SSH Keys
 # ---------------------------------------------------------------------------
-alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET PERSISTENCE Crontab Modification Detected"; content:"crontab"; classtype:policy-violation; sid:1000060; rev:1;)
+# G5.5 (Gap K): sid:1000060 (deleted) matched ANY tcp payload between two
+# HOME_NET hosts containing the raw substring "crontab" -- the same class
+# of bug as sid:1000030 above: no port/app-layer constraint, and a
+# crontab edit is a host-level file-write event that doesn't reliably
+# cross the wire as a distinctive plaintext substring in the first place.
+# T1053.003 belongs behind host telemetry (file/process events), not a
+# Suricata content match -- see docs/20260813-remediation-plan.md's
+# G-INFRA.1.
 
 # ---------------------------------------------------------------------------
 # MALWARE / GENERAL

@@ -166,7 +166,14 @@ docker compose exec red-team python runner.py --campaign privesc-suid
 
 **Why two?** Different sub-techniques, different detection content.
 The Sigma rule `privesc_sudo.yml` keys on `sudo ... NOPASSWD ... find`-
-style enumeration; SUID detection lives in Suricata `sid:1000030`.
+style enumeration. SUID detection has no live coverage today -- G5.5
+(#194) removed the Suricata `sid:1000030` that used to stand in for it
+(it matched any TCP payload between lab hosts containing "sudo" and
+"-l", which isn't how `sudo -l`/SUID discovery actually reaches the
+wire, and alert-stormed on unrelated traffic that happened to contain
+both substrings). T1548.003 is a host-level event (process execution,
+file access) and belongs behind real host telemetry, not a Suricata
+content match -- see `docs/20260813-remediation-plan.md`'s G-INFRA.1.
 
 ---
 

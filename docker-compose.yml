@@ -221,6 +221,7 @@ services:
         mkdir -p /etc/suricata/rules && \
         cp /lab-config/suricata.yaml /etc/suricata/suricata.yaml && \
         cp /lab-config/local.rules /etc/suricata/rules/local.rules && \
+        cp /lab-config/threshold.config /etc/suricata/rules/threshold.config && \
         # /var/log/suricata is a host bind-mount and persists across
         # runs. Stale eve.json events from a prior run (especially ones
         # captured on the wrong iface) trip an ES mapping conflict in
