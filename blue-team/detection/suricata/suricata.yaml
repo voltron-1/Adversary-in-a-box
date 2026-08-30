@@ -182,3 +182,10 @@ app-layer:
         body-md5: no
     ssh:
       enabled: yes
+    # G5.4 (Gap J): needed for SMB visibility (sid:1000040/1000043's lateral-
+    # movement rules match on raw wire bytes and don't require this parser,
+    # but enabling it gives Suricata's own smb.* eve.json fields and any
+    # future smb.*-sticky-buffer rule real protocol tracking instead of
+    # raw-byte guessing).
+    smb:
+      enabled: yes

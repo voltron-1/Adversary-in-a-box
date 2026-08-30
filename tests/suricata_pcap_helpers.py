@@ -128,17 +128,19 @@ def udp_packet(src, sport, dst, dport, payload):
     return [Ether() / IP(src=src, dst=dst) / UDP(sport=sport, dport=dport) / Raw(load=payload)]
 
 
-def dns_query(src, sport, dst, dport, qname, *, txn_id=0):
+def dns_query(src, sport, dst, dport, qname, *, txn_id=0, qtype="A", qclass="IN"):
     """A syntactically valid DNS query (RD set, QDCOUNT=1) -- Suricata's dns
     app-layer probing parser rejects malformed headers (e.g. QDCOUNT=0),
-    so any dns-typed rule needs a real query to even be evaluated."""
+    so any dns-typed rule needs a real query to even be evaluated. qtype/
+    qclass default to a normal A/IN lookup; pass qtype="TXT", qclass="CH"
+    for a CHAOS-class version-scan-style query."""
     from scapy.all import DNS, IP, UDP, Ether, DNSQR
 
     pkt = (
         Ether()
         / IP(src=src, dst=dst)
         / UDP(sport=sport, dport=dport)
-        / DNS(id=txn_id, rd=1, qd=DNSQR(qname=qname))
+        / DNS(id=txn_id, rd=1, qd=DNSQR(qname=qname, qtype=qtype, qclass=qclass))
     )
     return [pkt]
 
