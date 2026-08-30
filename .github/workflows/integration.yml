@@ -169,29 +169,14 @@ jobs:
         echo "::endgroup::"
 
         echo "::group::Q2 -- container-to-gateway INPUT path (internal:true coverage)"
-        # victim-web is python:3.11-slim -- no iproute2, so `ip route` fails
-        # with "not found" (see run 33291832912). Parse /proc/net/route
-        # directly instead, mirroring the portable technique already proven
-        # in scripts/safety/containment_test.sh (G3.2).
-        HEXROUTE=$(docker compose exec -T victim-web sh -c \
-          "awk '\$2==\"00000000\" {print \$3; exit}' /proc/net/route" | tr -d '\r\n') || true
-        if [ -n "$HEXROUTE" ]; then
-          GW=$(printf '%d.%d.%d.%d' \
-            "0x${HEXROUTE:6:2}" "0x${HEXROUTE:4:2}" "0x${HEXROUTE:2:2}" "0x${HEXROUTE:0:2}")
-        else
-          GW=""
-        fi
-        echo "victim-web default gateway resolved to: $GW (raw hex: $HEXROUTE)"
-        docker compose exec -T victim-web python3 - <<PYEOF || true
-        import socket
-        gw = "$GW"
-        try:
-            s = socket.create_connection((gw, 9200), 3)
-            print(f"REACHABLE: victim-web -> {gw}:9200 succeeded")
-            s.close()
-        except OSError as e:
-            print(f"BLOCKED: victim-web -> {gw}:9200 failed ({e})")
-        PYEOF
+        # Two independent ad-hoc attempts at this (ip route: run 33291832912;
+        # a hand-rolled /proc/net/route parse: run 33292272944) both came back
+        # empty/inconclusive inside victim-web's minimal image. G3.2's
+        # "Verify live containment" step above already answers this exact
+        # question with a properly tested implementation
+        # (scripts/safety/containment_test.sh, tests/test_containment_test_script.py)
+        # -- see that step's own log output for the authoritative Q2 answer.
+        echo "(see the 'Verify live containment (G3.2)' step's own output above)"
         echo "::endgroup::"
 
         echo "::group::Q3 -- Zeek _path field in zeek/zeek:7.0 notice.log"
