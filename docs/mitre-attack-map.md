@@ -107,16 +107,18 @@ docker compose exec red-team python runner.py --campaign full-killchain --force
 | T1557 | ARP cache poisoning / duplicate IP-MAC binding | Zeek `arp_spoof.zeek` (²) | Real (²) |
 | T1110 | HTTP login burst | Suricata `ET BRUTE_FORCE HTTP Login Burst` (sid:1000090) | Real |
 | T1110 | Auth-failure advisory | Syslog → Sigma `credential_access_brute_force.yml` | Lab-instrumentation |
-| T1548.001 | SUID binary hunt | *(none yet — tracked in* [#233](https://github.com/voltron-1/Adversary-in-a-box/issues/233)*)* | — |
+| T1548.001 | SUID bit set | Falco `Lab SUID Bit Set` (³) | Real (³) |
 | T1548.003 | Sudo abuse | Syslog → Sigma `privesc_sudo.yml` | Lab-instrumentation |
 | T1550.002 | SMB pass-the-hash | Suricata `ET LATERAL_MOVEMENT SMB(2) Pass-the-Hash` (sid:1000040/1000043) | Real |
 | T1563.001 | Internal SSH connection | Zeek `lateral_movement.zeek` | Real |
 | T1048.003 | DNS tunnel: long/high-entropy subdomain, volume, NXDOMAIN rate | Zeek `dns_exfil.zeek` (²) | Real (²) |
 | T1041 | High outbound data volume | Zeek `exfil_volume.zeek` (²) | Real (²) |
 | T1041 | HTTPS exfil advisory | Syslog → Sigma `exfil_https.yml` (¹) | Lab-instrumentation |
+| T1486 | File rename burst (`os.rename` to a decoy path) | Falco `Lab Ransomware-Style File Rename` | Real |
 | T1486 | Mass file rename / ransom note advisory | Syslog → Sigma `impact_ransomware.yml` | Lab-instrumentation |
+| T1053.003 | Cron config write (`crontab -`, real spool-file write) | Falco `Lab Cron Persistence Write` | Real |
 | T1053.003 | Cron modification advisory | Syslog → Sigma `persistence_cron.yml` | Lab-instrumentation |
-| T1098.004 | SSH authorized_keys change | *(none yet — tracked in* [#233](https://github.com/voltron-1/Adversary-in-a-box/issues/233)*)* | — |
+| T1098.004 | SSH authorized_keys write | Falco `Lab SSH Authorized Keys Write` | Real |
 
 > **Syslog detection path (audit-4 G2b):** lab campaigns simulate attacks
 > without putting matching packets on the wire, so the host-/file-/proxy-
@@ -141,3 +143,13 @@ docker compose exec red-team python runner.py --campaign full-killchain --force
 > counts any Zeek notice.log entry toward MTTD) for a genuine attack or a
 > future non-simulated campaign, kept alongside the lab-instrumentation row
 > for the same technique rather than replacing it.
+>
+> **³ Real-but-unexercised (#233):** `privilege_escalation/suid_hunt.py`
+> only *enumerates* existing SUID/SGID binaries (`find / -perm -4000`) --
+> it never calls `chmod`/`chmod +s` to actually set a SUID bit, so Falco's
+> `Lab SUID Bit Set` rule (a real detector for the technique's actual
+> mechanism, scored un-gated in `forensics/scoreboard/scorer.py`'s
+> `_falco_ts()`) won't fire against this lab's own campaign as currently
+> written. Same pattern as footnote ² -- real, scored infrastructure for a
+> genuine attacker planting a SUID backdoor, not yet exercised by this
+> lab's own simulated traffic.
