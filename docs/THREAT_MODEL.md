@@ -232,6 +232,54 @@ new campaign's output.
 
 ---
 
+### 4.7 Elasticsearch access is prevented, not audited (LOW)
+
+**Threat.** A student (or anything else on the lab host) queries or writes
+to Elasticsearch directly -- either to tamper with scoring data or just to
+poke around -- and later, an operator wants to know whether that happened
+and who did it.
+
+**Controls (prevention).**
+
+1. `${BIND_ADDR:-127.0.0.1}:${ELASTICSEARCH_PORT:-9200}:9200` (G1.1) --
+   Elasticsearch, Kibana, the scoreboard, and the blue-team dashboard all
+   bind to loopback by default, not `0.0.0.0`. Nothing on the LAN, let
+   alone the internet, can reach port 9200 unless the operator explicitly
+   overrides `BIND_ADDR`.
+2. Provenance stamping (G1.3) -- syslog-sourced documents carry
+   `[log][provenance]: "untrusted-syslog"` and an ingress IP, so
+   `forensics/scoreboard/scorer.py`'s Sigma-based detection scoring only
+   trusts data that actually originated from the real red-team container,
+   not a forged datagram from any other lab-net peer.
+3. The scoreboard's manual-override audit trail (G1.4) -- `/api/award`
+   requires `SCOREBOARD_AUTH_TOKEN` and every adjustment is logged.
+
+**What's explicitly NOT a control here: an Elasticsearch audit log.**
+`xpack.security.enabled=false` is set deliberately (`docker-compose.yml`)
+-- enabling `xpack.security` (and its audit logging) would mean every
+service that talks to ES needs credentials, TLS, and role wiring, which is
+a real, recurring maintenance burden this lab's teaching-artifact posture
+has repeatedly decided against elsewhere (see `docs/ADRs/` for the pattern
+-- this lab optimizes for "clone and run," not production-grade SIEM
+hardening). That's a deliberate tradeoff, not an oversight: **loopback
+binding prevents unauthorized ES access; it does not produce a record of
+who accessed what.** If someone with host access to the loopback interface
+(the operator themselves, or another process running as the same user)
+queries or modifies ES directly, there is no audit trail of it -- G1.1's
+control and an access audit trail are different guarantees, and this repo
+only provides the first one.
+
+**Residual risk.** Score or evidence tampering via direct ES access from
+the lab host itself (not the network) is prevented from external actors by
+loopback binding, but is undetectable after the fact if it happens locally.
+Accepted for the same reason §4.5's evidence-tampering risk is accepted:
+this is a training lab, not a production SIEM, and a student who tampers
+with their own score directly against ES (rather than through the
+`/api/award` path) undermines their own learning outcome, not anyone
+else's.
+
+---
+
 ## 5. Operator checklist
 
 Before running the lab:
