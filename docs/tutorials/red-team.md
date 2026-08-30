@@ -252,8 +252,11 @@ Sigma rule both fire.
 ## 9. The full kill chain
 
 ```bash
-docker compose exec red-team python runner.py --campaign full-killchain
+docker compose exec red-team python runner.py --campaign full-killchain --force
 ```
+
+`--force` is required (P10): full-killchain and impact campaigns are
+destructive by nature and refuse to run without it.
 
 Runs every registered campaign in sequence. Takes 3-5 minutes; the
 SIEM (Operator View dashboard) lights up progressively. Pair with

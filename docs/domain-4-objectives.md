@@ -69,7 +69,7 @@ playbook engine, scoreboard.
    ```
 3. In another terminal, run the full kill-chain:
    ```bash
-   docker compose exec red-team python runner.py --campaign full-killchain
+   docker compose exec red-team python runner.py --campaign full-killchain --force
    ```
 4. In a third, open Kibana at `http://localhost:5601` and load the
    Suricata + Zeek data views.

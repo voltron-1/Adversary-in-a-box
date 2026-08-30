@@ -73,7 +73,7 @@
 **Objective:** Proactively hunt for lateral movement indicators in Zeek logs.
 
 **Steps:**
-1. Run: `docker compose exec red-team python runner.py --campaign full-killchain`
+1. Run: `docker compose exec red-team python runner.py --campaign full-killchain --force`
 2. Open Kibana → **Discover** → Index: `zeek-*`
 3. Hunt for:
    - Unusual internal SMB connections: `destination.port: 445 AND network.direction: internal`

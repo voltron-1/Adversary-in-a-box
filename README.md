@@ -350,7 +350,9 @@ docker compose exec red-team python runner.py --list
 docker compose exec red-team python runner.py --campaign phishing
 
 # Run the full kill-chain (recon → privesc → exfil)
-docker compose exec red-team python runner.py --campaign full-killchain
+# --force is required (P10): full-killchain and impact campaigns are
+# destructive by nature and refuse to run without it.
+docker compose exec red-team python runner.py --campaign full-killchain --force
 
 # Run a specific MITRE technique
 docker compose exec red-team python runner.py --technique T1566.001

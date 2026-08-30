@@ -236,6 +236,13 @@ class TestFullKillchain(unittest.TestCase):
                 "runner.py",
                 "--campaign",
                 "full-killchain",
+                # P10 (2026-07-14, #137) made runner.py refuse full-killchain
+                # without --force. This invocation was never updated, so
+                # every dispatch since has run_campaign() print "Refusing to
+                # run destructive campaign without --force" and exit
+                # nonzero -- the kill chain never actually ran, cascading
+                # into every downstream scoring/detection assertion failing.
+                "--force",
             ],
             cwd=REPO_ROOT,
             capture_output=True,
