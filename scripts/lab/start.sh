@@ -121,7 +121,13 @@ for it in items:
     if (( PENDING == 0 )); then
         echo "[start] all services healthy."
         docker compose ps
-        exit 0
+        # G3.2: prove the air-gap LIVE, not just in the static compose config
+        # (tests/test_compose_containment.py) or documentation. Runs every
+        # startup so a host-level regression (e.g. a misconfigured Docker
+        # network driver) is caught immediately, not just in CI.
+        echo "[start] running live containment probe (scripts/safety/containment_test.sh)..."
+        bash "${ROOT_DIR}/scripts/safety/containment_test.sh"
+        exit $?
     fi
 
     if (( $(date +%s) > DEADLINE )); then

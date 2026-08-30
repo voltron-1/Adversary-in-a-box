@@ -59,8 +59,15 @@ services:
       - ./evidence:/evidence
     environment:
       - TARGET_WEB=${TARGET_WEB_URL:-http://victim-web}
-      - TARGET_DB=${TARGET_DB_HOST:-victim-db}
-      - TARGET_MAIL=${TARGET_MAIL_HOST:-victim-mail}
+      # G3.6: these container env vars were named TARGET_DB/TARGET_MAIL, but
+      # pass_the_hash.py and spear_phish.py (and the P8 allowlist sweep in
+      # runner.py) both read TARGET_DB_HOST/TARGET_MAIL_HOST -- so neither an
+      # operator's .env override nor the allowlist gate ever actually reached
+      # the campaigns; both campaigns silently ran against their hardcoded
+      # fallback IPs regardless of what .env set. Match the names the code
+      # reads.
+      - TARGET_DB_HOST=${TARGET_DB_HOST:-victim-db}
+      - TARGET_MAIL_HOST=${TARGET_MAIL_HOST:-victim-mail}
       - SIEM_HOST=${SIEM_HOST:-elasticsearch}
       # P4: stamp the attacker source.ip to match this container's actual
       # lab-net address. Without it the MITRE tagger fell back to a hardcoded

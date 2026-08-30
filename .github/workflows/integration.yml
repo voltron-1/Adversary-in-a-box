@@ -82,6 +82,13 @@ jobs:
     - name: Tail compose ps for diagnostics
       run: docker compose ps
 
+    - name: Verify live containment (G3.2)
+      # start.sh already runs this after its health poll (so a bad stack
+      # never gets this far), but a dedicated named step gives it its own
+      # pass/fail in the Actions UI instead of being buried in "Build +
+      # start the lab"'s output.
+      run: bash scripts/safety/containment_test.sh
+
     - name: Verify PKI profile serves TLS (audit-4 G3a)
       # Runs BEFORE the integration test, whose tearDownClass does
       # `docker compose down -v` and would otherwise nuke the stack first.
