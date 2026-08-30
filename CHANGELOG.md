@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Phase G1.1** — Elasticsearch, Kibana, the scoreboard, and the blue-team
+  dashboard now publish their ports bound to `${BIND_ADDR:-127.0.0.1}`
+  instead of `0.0.0.0`. Previously any host on `lab-net` (or, if the lab
+  host itself was LAN-reachable, any host on that LAN) could hit the
+  unauthenticated Elasticsearch API directly and forge a campaign's score.
+  Widen `BIND_ADDR` deliberately in `.env` if another host genuinely needs
+  to reach the dashboards. Also restricted `action.auto_create_index` to
+  an explicit allowlist (`suricata-*`, `zeek-*`, `syslog-*`,
+  `red-team-events-*`, `ir-events-*`, `.monitoring-*`) so a stray or
+  malicious write can't index-squat an arbitrary index name.
+
 ### Fixed
 
 - All three shipped Kibana dashboards were broken against the lab's Kibana
