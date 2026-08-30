@@ -173,6 +173,17 @@ Auto-refreshes every 15 seconds.
 REBASE=1 KIBANA_URL=http://localhost:5601 ./scripts/setup/compile_sigma.sh
 ```
 
+> **G2.3: this is a syntax linter, not the scoring path.** `compile_sigma.sh`
+> proves each rule converts cleanly (and, with `REBASE=1`, exercises an
+> experimental/non-functional Kibana import — see the loud warning it
+> prints). The rule that actually scores a detection is
+> `forensics/scoreboard/sigma_eval.py`, which reads each `.yml` directly and
+> evaluates it against live `syslog-*` campaign advisories
+> (`scorer._sigma_detection_ts()`). Don't "fix" that gap by wiring the
+> Kibana import path up for real — the RETIRE decision in
+> `docs/20260813-remediation-plan.md` Phase G2 already ruled it out (wrong
+> index set, degenerate keyword-only EQL, wrong API shape).
+
 ### 2.3 IR playbooks
 
 Flask dashboard at <http://localhost:5000> triggers playbooks via UI.
