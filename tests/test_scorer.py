@@ -112,7 +112,7 @@ class TestG13ProvenanceIntegrity(unittest.TestCase):
     def _fresh_scorer(self):
         if "scorer" in sys.modules:
             del sys.modules["scorer"]
-        import scorer  # noqa: PLC0415
+        import scorer  # noqa: F401
 
         return sys.modules["scorer"]
 
