@@ -102,3 +102,15 @@ alert tcp any any -> $HOME_NET any (msg:"ET MALWARE EICAR Test Marker In Transit
 # of the note (e.g. over an SMB share) in a real incident.
 # ---------------------------------------------------------------------------
 alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET RANSOMWARE Lab Ransom Note Marker"; content:"LAB SIMULATION -- NO ACTUAL ENCRYPTION"; classtype:trojan-activity; sid:1000110; rev:1;)
+
+# ---------------------------------------------------------------------------
+# Phase G3.5 -- containment tripwire
+# The belt to G3.1 (static compose config check) and G3.2 (live containment
+# probe)'s suspenders: those two prove the air-gap holds by inspection, but
+# nothing was actually watching the wire for the exact failure mode Phase 3
+# exists to prevent. This fires on ANY lab host traffic reaching a non-lab
+# address, regardless of technique or cause (misconfigured network driver,
+# an escaped campaign, a manual mistake) -- it does not try to distinguish
+# them, since any of them means containment already failed.
+# ---------------------------------------------------------------------------
+alert ip $HOME_NET any -> !$HOME_NET any (msg:"AIB CONTAINMENT lab host reached non-lab address"; classtype:policy-violation; sid:1000200; rev:1;)
