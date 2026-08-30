@@ -165,6 +165,89 @@ def _build_cases() -> dict:
         ),
         "expect_fire": {1000023},
     }
+    cases["phishing_attachment_pdf"] = {
+        # G5.3 (#192): sid:1000010's extension list gained pdf/doc/docm/zip/iso.
+        "build": lambda: smtp_session(
+            OUTSIDE_A,
+            51023,
+            HOME_B,
+            25,
+            [
+                (line[0], line[1].replace(b'filename="invoice.exe"', b'filename="invoice.pdf"'))
+                for line in _phishing_lines
+            ],
+        ),
+        "expect_fire": {1000010},
+    }
+    cases["sqli_or_in_request_body"] = {
+        # G5.3 (#192): sid:1000020 only ever looks at http_uri; the same
+        # payload sent as a POST body needs its own rule (sid:1000024).
+        "build": lambda: tcp_conversation(
+            HOME_A,
+            51020,
+            HOME_B,
+            80,
+            b"POST /login HTTP/1.1\r\nHost: victim-web\r\n"
+            b"Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 27\r\n\r\n"
+            b"user=admin' OR 1=1--&pass=x",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+        ),
+        "expect_fire": {1000024},
+    }
+    cases["xss_in_request_body"] = {
+        "build": lambda: tcp_conversation(
+            HOME_A,
+            51021,
+            HOME_B,
+            80,
+            b"POST /comment HTTP/1.1\r\nHost: victim-web\r\n"
+            b"Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 30\r\n\r\n"
+            b"text=<script>alert(1)</script>",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+        ),
+        "expect_fire": {1000025},
+    }
+    cases["sqli_union_in_request_body"] = {
+        "build": lambda: tcp_conversation(
+            HOME_A,
+            51022,
+            HOME_B,
+            80,
+            b"POST /search HTTP/1.1\r\nHost: victim-web\r\n"
+            b"Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 46\r\n\r\n"
+            b"q=1 UNION SELECT username,password FROM users",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+        ),
+        "expect_fire": {1000026},
+    }
+    cases["absolute_path_file_read_literal"] = {
+        # G5.3 (#192): matches red-team/campaigns/initial_access/exploit_web.py's
+        # actual path-traversal payload: GET /file?name=../../../etc/passwd
+        "build": lambda: tcp_conversation(
+            HOME_A,
+            51024,
+            HOME_B,
+            80,
+            b"GET /file?name=../../../etc/passwd HTTP/1.1\r\nHost: victim-web\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+        ),
+        "expect_fire": {1000027},
+    }
+    cases["absolute_path_file_read_url_encoded"] = {
+        # Same campaign's second payload variant: ..%2F..%2F..%2Fetc%2Fpasswd.
+        # This is why sid:1000027 exists as its own rule rather than relying
+        # on sid:1000022 alone: it matches the endpoint itself, independent
+        # of how the traversal segment is encoded.
+        "build": lambda: tcp_conversation(
+            HOME_A,
+            51025,
+            HOME_B,
+            80,
+            b"GET /file?name=..%2F..%2F..%2Fetc%2Fpasswd HTTP/1.1\r\nHost: victim-web\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+        ),
+        "expect_fire": {1000027},
+    }
     cases["benign_http_request"] = {
         # Negative control: a clean request must not false-positive any of
         # the web-attack content rules.
@@ -177,7 +260,7 @@ def _build_cases() -> dict:
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
         ),
         "expect_fire": set(),
-        "expect_absent": {1000020, 1000021, 1000022, 1000023},
+        "expect_absent": {1000020, 1000021, 1000022, 1000023, 1000024, 1000025, 1000026, 1000027},
     }
 
     # --- PRIVILEGE ESCALATION ---

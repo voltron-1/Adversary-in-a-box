@@ -13,11 +13,27 @@ alert udp any any -> $HOME_NET 53 (msg:"ET RECON DNS Version Scan"; content:"|00
 # ---------------------------------------------------------------------------
 # INITIAL ACCESS — T1566 Phishing | T1190 Web Exploit
 # ---------------------------------------------------------------------------
-alert smtp any any -> $HOME_NET 25 (msg:"ET PHISHING Suspicious Email - Executable Attachment"; content:"Content-Disposition: attachment"; content:"filename="; pcre:"/filename=\"[^\"]*\.(exe|bat|ps1|vbs|js|hta)\"/i"; classtype:social-engineering; sid:1000010; rev:1;)
+alert smtp any any -> $HOME_NET 25 (msg:"ET PHISHING Suspicious Email - Executable Attachment"; content:"Content-Disposition: attachment"; content:"filename="; pcre:"/filename=\"[^\"]*\.(exe|bat|ps1|vbs|js|hta|pdf|doc|docm|zip|iso)\"/i"; classtype:social-engineering; sid:1000010; rev:2;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQL Injection Attempt OR 1=1"; content:"' OR"; http_uri; nocase; classtype:web-application-attack; sid:1000020; rev:1;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER XSS Attempt Script Tag"; content:"<script>"; http_uri; nocase; classtype:web-application-attack; sid:1000021; rev:1;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Path Traversal Attempt"; content:"../"; http_uri; classtype:web-application-attack; sid:1000022; rev:1;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQLi UNION SELECT"; content:"UNION SELECT"; http_uri; nocase; classtype:web-application-attack; sid:1000023; rev:1;)
+# G5.3 (Gap I): the four rules above only look at http_uri (the GET query
+# string) or, for sid:1000010, raw SMTP payload -- none of them match the
+# same payload sent as a POST body, which the lab's own campaigns and any
+# real attacker use just as often. http-body-inline is already on
+# (suricata.yaml's libhtp config), so http.request_body is populated.
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQL Injection Attempt OR 1=1 (request body)"; http.request_body; content:"' OR"; nocase; classtype:web-application-attack; sid:1000024; rev:1;)
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER XSS Attempt Script Tag (request body)"; http.request_body; content:"<script>"; nocase; classtype:web-application-attack; sid:1000025; rev:1;)
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQLi UNION SELECT (request body)"; http.request_body; content:"UNION SELECT"; nocase; classtype:web-application-attack; sid:1000026; rev:1;)
+# G5.3 (Gap I): red-team's exploit_web.py hits GET /file?name=<path> for its
+# path-traversal test (both a literal "../../../etc/passwd" and a
+# "..%2F..%2F..%2Fetc%2Fpasswd" URL-encoded variant). sid:1000022 only ever
+# sees the literal form (http_uri normalizes "../" away; http_raw_uri, once
+# G5.4 fixes 1000022 to use it, is un-decoded so "%2F" never becomes "/"
+# there either) -- an absolute-path-read endpoint being hit at all, with any
+# encoding, is itself the signal worth alerting on.
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Absolute Path File Read"; content:"/file?name="; http_uri; classtype:web-application-attack; sid:1000027; rev:1;)
 
 # ---------------------------------------------------------------------------
 # PRIVILEGE ESCALATION — T1548
