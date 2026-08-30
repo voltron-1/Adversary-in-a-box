@@ -18,13 +18,17 @@
 # Exit codes:
 #   0  — air-gap intact, safe to start the lab
 #   1  — a domain resolved or a port was reachable: refuse to start
-#   2  — usage / config error (no domains configured, missing tools, etc.)
+#   2  — usage / config error (no domains configured, missing tools,
+#        resolver control probe failed, etc.)
 #
 # Flags:
 #   --strict   treat a missing SAFE_MODE_DOMAINS as a hard failure (default:
 #              print a warning and exit 0 — useful in CI where there is no .env)
 #   --quiet    suppress per-check output; only print the verdict
-#   --timeout N    per-port TCP probe timeout in seconds (default: 2)
+#   --timeout N    per-port/DNS-lookup probe timeout in seconds (default: 2)
+#   --control-domain D  a domain that MUST resolve, used to prove the
+#                       resolver itself works before trusting any "does not
+#                       resolve" result below (default: example.com)
 #
 # Usage:
 #   bash scripts/safety/egress_test.sh
@@ -35,14 +39,16 @@ set -euo pipefail
 STRICT=0
 QUIET=0
 TIMEOUT=2
+CONTROL_DOMAIN="example.com"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --strict)  STRICT=1 ;;
         --quiet)   QUIET=1 ;;
         --timeout) TIMEOUT="${2:?--timeout needs a value}"; shift ;;
+        --control-domain) CONTROL_DOMAIN="${2:?--control-domain needs a value}"; shift ;;
         -h|--help)
-            sed -n '2,28p' "$0"
+            sed -n '2,31p' "$0"
             exit 0 ;;
         *)
             echo "[ERROR] unknown flag: $1" >&2
@@ -54,16 +60,28 @@ done
 log() { (( QUIET )) || echo "$@"; }
 err() { echo "$@" >&2; }
 
-# --- Load .env if present (without overriding anything already exported) -----
-if [[ -f .env ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source .env
-    set +a
-fi
+# --- Read the two keys we need directly out of .env, without sourcing it ----
+# `source .env` executes .env as shell -- any command substitution or stray
+# shell metacharacter in it runs with this script's privileges. Only two
+# keys matter here, so pull just those via sed instead, and only from lines
+# that actually look like KEY=VALUE (skip comments/blank lines/anything
+# else a malformed or tampered .env might contain).
+env_value() {
+    local key="$1"
+    [[ -f .env ]] || return 0
+    # `|| true`: a key absent from .env means the first grep legitimately
+    # finds nothing (exit 1) -- with pipefail that would otherwise trip
+    # this function's own `set -e` when the caller captures it via
+    # VAR="$(env_value ...)", killing the whole script before the caller's
+    # own "${VAR:-default}" fallback ever runs.
+    grep -E "^${key}=" .env 2>/dev/null | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' | tail -n1 \
+        | sed -E "s/^${key}=//" | sed -E 's/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/' || true
+}
 
-DOMAINS_RAW="${SAFE_MODE_DOMAINS:-}"
-PORTS_RAW="${SAFE_MODE_AD_PORTS:-88,389,445,636,3268,3269}"
+DOMAINS_RAW="$(env_value SAFE_MODE_DOMAINS)"
+DOMAINS_RAW="${DOMAINS_RAW:-${SAFE_MODE_DOMAINS:-}}"
+PORTS_RAW="$(env_value SAFE_MODE_AD_PORTS)"
+PORTS_RAW="${PORTS_RAW:-${SAFE_MODE_AD_PORTS:-88,389,445,636,3268,3269}}"
 
 if [[ -z "$DOMAINS_RAW" ]]; then
     if (( STRICT )); then
@@ -97,17 +115,22 @@ if [[ -z "$RESOLVER" ]]; then
     exit 2
 fi
 
+if ! command -v timeout >/dev/null 2>&1; then
+    err "[ERROR] coreutils 'timeout' is required for DNS lookups and port probing."
+    exit 2
+fi
+
 resolve_host() {
     local domain="$1"
     case "$RESOLVER" in
         getent)
-            getent hosts "$domain" 2>/dev/null | awk 'NR==1{print $1}' ;;
+            timeout "$TIMEOUT" getent hosts "$domain" 2>/dev/null | awk 'NR==1{print $1}' ;;
         dig)
-            dig +short +time=2 +tries=1 "$domain" 2>/dev/null | head -n1 ;;
+            dig +short +time="$TIMEOUT" +tries=1 "$domain" 2>/dev/null | head -n1 ;;
         host)
-            host -W 2 "$domain" 2>/dev/null | awk '/has address/{print $4; exit}' ;;
+            host -W "$TIMEOUT" "$domain" 2>/dev/null | awk '/has address/{print $4; exit}' ;;
         python3|python)
-            "$RESOLVER" -c "import socket,sys
+            timeout "$TIMEOUT" "$RESOLVER" -c "import socket,sys
 try: print(socket.gethostbyname(sys.argv[1]))
 except Exception: sys.exit(1)" "$domain" 2>/dev/null ;;
     esac
@@ -119,8 +142,18 @@ probe_port() {
     timeout "$TIMEOUT" bash -c ">/dev/tcp/${host}/${port}" 2>/dev/null
 }
 
-if ! command -v timeout >/dev/null 2>&1; then
-    err "[ERROR] coreutils 'timeout' is required for port probing."
+# --- Resolver control probe --------------------------------------------------
+# A domain that must always resolve, checked BEFORE trusting any "does not
+# resolve" result below. Without this, a broken/unreachable resolver (bad
+# /etc/resolv.conf, no network, DNS outage) makes every safe-mode domain look
+# like it "doesn't resolve" -- a false PASS on the exact check this preflight
+# exists to make trustworthy. Converts that into a hard ERROR instead.
+if ! control_ip="$(resolve_host "$CONTROL_DOMAIN")" || [[ -z "$control_ip" ]]; then
+    err "[ERROR] Resolver control probe failed: '$CONTROL_DOMAIN' did not resolve."
+    err "        The DNS resolver ($RESOLVER) appears broken or unreachable, so a"
+    err "        safe-mode domain failing to resolve below cannot be trusted as a"
+    err "        real PASS. Fix DNS resolution, or pass --control-domain to point"
+    err "        at a domain you know resolves in this environment."
     exit 2
 fi
 
