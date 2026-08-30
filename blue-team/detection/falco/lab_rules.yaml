@@ -1,0 +1,88 @@
+# blue-team/detection/falco/lab_rules.yaml — Adversary-in-a-Box custom rules
+#
+# #233 (re-scoped from auditd to Falco -- see
+# findings/20260830-g233-auditd-portability-spike.md): real, kernel-level
+# eBPF telemetry for four techniques that had either a self-reported
+# emit_syslog_advisory marker or no coverage at all
+# (findings/20260830-g-infra1-host-telemetry-decision.md's table).
+#
+# Schema-validated against the real `falco` 0.39.2 binary
+# (`falco -V blue-team/detection/falco/lab_rules.yaml`) during
+# development. No live syscall source could be exercised in that
+# sandbox (CAP_SYS_RESOURCE unavailable there -- see the spike doc,
+# Test 4) so firing behavior against real syscalls is unverified;
+# `-V` only confirms the rule syntax/condition/output-field references
+# are valid against Falco's own field schema, not that any traffic
+# matches it end-to-end.
+
+- list: lab_cron_paths
+  items: [/etc/cron.d, /etc/crontab, /var/spool/cron/crontabs]
+
+# T1053.003 -- cron persistence. Real analogue of
+# persistence/cron_backdoor.py's self-reported marker.
+- rule: Lab Cron Persistence Write
+  desc: >
+    A write landed under a cron config path -- the actual mechanism
+    T1053.003 (Scheduled Task/Job: Cron) uses to persist, observed at
+    the syscall level rather than self-reported by the campaign.
+  condition: open_write and fd.directory in (lab_cron_paths)
+  output: >
+    Lab T1053.003 cron persistence write (file=%fd.name proc=%proc.name
+    user=%user.name container=%container.id)
+  priority: WARNING
+  tags: [T1053.003, persistence, lab, mitre_persistence]
+
+# T1548.001 -- SUID/SGID abuse. Previously had zero coverage of any
+# kind (no Suricata rule, no Zeek script, no syslog advisory).
+- rule: Lab SUID Bit Set
+  desc: >
+    A chmod-family syscall set the setuid bit on a file -- the
+    mechanism T1548.001 (Setuid and Setgid) abuses for privilege
+    escalation via a planted SUID binary.
+  condition: >
+    evt.type in (chmod, fchmod, fchmodat) and evt.dir = < and
+    (evt.arg.mode contains "S_ISUID" or evt.arg.mode contains "04000")
+  output: >
+    Lab T1548.001 SUID bit set (file=%evt.arg.filename mode=%evt.arg.mode
+    proc=%proc.name user=%user.name container=%container.id)
+  priority: WARNING
+  tags: [T1548.001, privilege_escalation, lab, mitre_privilege_escalation]
+
+# T1098.004 -- SSH authorized_keys implant. Previously had zero
+# coverage of any kind, same as T1548.001.
+- rule: Lab SSH Authorized Keys Write
+  desc: >
+    A write landed on a file named authorized_keys -- how T1098.004
+    (SSH Authorized Keys) plants persistent SSH access.
+  condition: open_write and fd.name endswith "authorized_keys"
+  output: >
+    Lab T1098.004 SSH authorized_keys write (file=%fd.name
+    proc=%proc.name user=%user.name container=%container.id)
+  priority: WARNING
+  tags: [T1098.004, persistence, lab, mitre_persistence]
+
+# T1486 -- ransomware-style file impact. Real analogue of
+# impact/ransomware_sim.py's self-reported marker.
+#
+# Honest limitation, same class as sigma_eval.py's (see
+# docs/sigma-eval.md): Falco's rule condition language has no built-in
+# aggregation/count()/timeframe primitive (unlike Zeek's SumStats,
+# which dns_exfil.zeek and port_scan.zeek both use for their rate
+# signals) -- this fires per matching rename, not on a burst threshold.
+# A true "N renames in T seconds" signal would need downstream
+# aggregation (e.g. Logstash's aggregate filter, or a
+# falcosidekick-style forwarder) as a follow-up, not something this
+# rule alone can express.
+- rule: Lab Ransomware-Style File Rename
+  desc: >
+    A file was renamed -- the mechanism ransomware_sim.py's real
+    encryption-rename loop performs, and the observable signature of
+    T1486 (Data Encrypted for Impact) in general. Fires per rename;
+    see the rule comment above for why this isn't itself a burst/rate
+    detection.
+  condition: evt.type = rename and evt.dir = <
+  output: >
+    Lab T1486 file rename (from=%evt.arg.oldpath to=%evt.arg.newpath
+    proc=%proc.name user=%user.name container=%container.id)
+  priority: WARNING
+  tags: [T1486, impact, lab, mitre_impact]

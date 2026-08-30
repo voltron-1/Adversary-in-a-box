@@ -286,6 +286,74 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # #233 (re-scoped from auditd to Falco -- see
+  # findings/20260830-g233-auditd-portability-spike.md): real, kernel-level
+  # eBPF syscall telemetry for T1053.003/T1548.001/T1098.004/T1486, which
+  # previously had either a self-reported emit_syslog_advisory marker or no
+  # coverage at all (findings/20260830-g-infra1-host-telemetry-decision.md).
+  # auditd was the original G-INFRA.1 recommendation but was empirically
+  # shown to require --pid=host (host-wide process visibility on a
+  # container this lab actively attacks -- a materially bigger blast
+  # radius than anything else granted here, see docs/THREAT_MODEL.md
+  # §4.1). Falco's own blocker in that spike (CAP_SYS_RESOURCE) is an
+  # ordinary per-container capability grant instead.
+  falco:
+    image: falcosecurity/falco-no-driver:0.39.2
+    hostname: falco
+    networks:
+      lab-net:
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.80
+    # SYS_ADMIN/BPF/PERFMON: load and attach the modern eBPF probe.
+    # SYS_RESOURCE: raise RLIMIT_MEMLOCK for the probe's ring buffers --
+    # without it Falco's own libpman driver refuses to start (confirmed
+    # against the real falco binary; see the spike doc's Test 4).
+    # SYS_PTRACE/DAC_READ_SEARCH: read other processes' /proc entries for
+    # event enrichment (process args, exe path). NET_ADMIN/NET_RAW: some
+    # default Falco rules use socket-level fields. No docker.sock mount --
+    # this lab treats that as its highest-blast-radius grant (see
+    # docs/THREAT_MODEL.md §4.1) and container.id (available from cgroup
+    # parsing alone) is enough for this lab's rules, which key on file
+    # paths/behaviors rather than container identity.
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+      - SYS_RESOURCE
+      - IPC_LOCK
+      - NET_ADMIN
+      - NET_RAW
+      - DAC_READ_SEARCH
+      - BPF
+      - PERFMON
+    volumes:
+      # Bind-mounting the host's real /proc (not just this container's
+      # own namespace-scoped view) is Falco's standard, documented way to
+      # get full process-tree visibility without --pid=host. This means
+      # Falco observes the whole Docker host's syscalls, not just this
+      # lab's containers -- consistent with, not beyond, what
+      # docs/THREAT_MODEL.md's operator checklist already assumes ("I'm
+      # on a disposable VM or a host I don't care about").
+      - /proc:/host/proc:ro
+      - /etc:/host/etc:ro
+      - ./blue-team/detection/falco/lab_rules.yaml:/etc/falco/rules.d/lab_rules.yaml:ro
+    # Ship alerts over the same UDP syslog port every other host-telemetry
+    # source in this lab already uses (siem/logstash/pipelines/syslog.conf)
+    # instead of standing up a new ingest path. Verified against the real
+    # falco binary (--dry-run) and the real `logger` wire format during
+    # development -- see the spike doc.
+    command:
+      - /usr/bin/falco
+      - -o
+      - json_output=true
+      - -o
+      - program_output.enabled=true
+      - -o
+      - program_output.keep_alive=true
+      - -o
+      - program_output.program=logger -t falco -n logstash -P 5514 -d --rfc3164
+      - -o
+      - syslog_output.enabled=false
+    restart: unless-stopped
+
   # ---------------------------------------------------------------------------
   # ELK SIEM — Elasticsearch + Logstash + Kibana
   # ---------------------------------------------------------------------------
@@ -498,6 +566,10 @@ services:
       # G1.3: matches red-team's own ATTACKER_IP so scorer.py can reject a
       # syslog "detection" forged by any other lab-net peer.
       - ATTACKER_IP=${LAB_NET_PREFIX:-172.20.0}.10
+      # #233: matches the falco service's own static IP so scorer.py can
+      # reject a "falco: {...}" syslog datagram forged by any other
+      # lab-net peer, same reasoning as ATTACKER_IP above.
+      - FALCO_HOST_IP=${LAB_NET_PREFIX:-172.20.0}.80
       # G1.4: matches red-team/blue-team's LOG_LEVEL convention so the award
       # audit-trail log (#143) actually reaches container logs.
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
