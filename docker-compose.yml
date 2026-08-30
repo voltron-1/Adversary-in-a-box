@@ -504,6 +504,32 @@ services:
     depends_on:
       - elasticsearch
     restart: unless-stopped
+    # #238 (G-INFRA.2 follow-up -- see
+    # findings/20260830-g-infra2-stdout-shipping-decision.md): ship this
+    # service's stdout (including the G1.4 award audit-trail log) into the
+    # existing syslog.conf pipeline instead of only being visible via
+    # `docker logs scoreboard`. Deliberately scoped to just this one
+    # service, not a blanket default -- Elasticsearch/Kibana/Logstash's own
+    # startup/access-log volume would flood syslog-* if this were applied
+    # to every container. Every line this service writes to stdout ships,
+    # not only award lines (Docker's log driver can't filter within one
+    # container's stream) -- syslog.conf's own [program]=="scoreboard"
+    # block further narrows to lines that actually look like an award.
+    #
+    # IP, not the "logstash" service name: confirmed empirically that the
+    # syslog log driver resolves syslog-address from the DOCKER DAEMON's
+    # own network context (its host-level resolver), not the container's
+    # -- unlike a normal app-level DNS lookup, it never reaches the
+    # compose network's embedded DNS at 127.0.0.11. Using "logstash" here
+    # made `docker run` refuse to even start the container ("dial udp:
+    # lookup logstash on 8.8.8.8:53: no such host"). logstash's own
+    # static address (elsewhere in this file) is the only address that
+    # actually resolves for this option.
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "udp://${LAB_NET_PREFIX:-172.20.0}.51:5514"
+        tag: "scoreboard"
 
   # ---------------------------------------------------------------------------
   # PKI LAB (OQ-4) — opt-in via `docker compose --profile pki up -d`
