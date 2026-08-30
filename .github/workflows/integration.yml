@@ -150,6 +150,46 @@ jobs:
         mkdir -p "$EVIDENCE_DIR"
         python -m unittest discover -s tests/integration -v
 
+    - name: TEMP -- Phase G0.1 runtime confirmation evidence (#168)
+      # Investigative-only, does not gate the job. Answers the four
+      # environment-specific questions G0.1 gates later phases on.
+      # This step is removed again once findings/20260813-runtime-confirmation.md
+      # is written from its output -- see docs/20260813-remediation-plan.md.
+      if: always()
+      run: |
+        echo "::group::Q1 -- checksum-validation + invalid_checksum counters"
+        docker compose exec -T suricata suricata --dump-config 2>/dev/null | grep -i checksum || echo "(dump-config unavailable)"
+        echo "--- eve.json stats events (checksum-related fields) ---"
+        grep -o '"tcp":{[^}]*}' /var/log/suricata/eve.json 2>/dev/null | tail -5 || echo "(no host-mounted eve.json found)"
+        grep -o '"checksum[^,}]*' /var/log/suricata/eve.json 2>/dev/null | sort | uniq -c | tail -20 || true
+        echo "::endgroup::"
+
+        echo "::group::Q2 -- container-to-gateway INPUT path (internal:true coverage)"
+        GW=$(docker compose exec -T victim-web sh -c "ip route | awk '/default/ {print \$3}'" | tr -d '\r') || true
+        echo "victim-web default gateway resolved to: $GW"
+        docker compose exec -T victim-web python3 - <<PYEOF || true
+        import socket
+        gw = "$GW"
+        try:
+            s = socket.create_connection((gw, 9200), 3)
+            print(f"REACHABLE: victim-web -> {gw}:9200 succeeded")
+            s.close()
+        except OSError as e:
+            print(f"BLOCKED: victim-web -> {gw}:9200 failed ({e})")
+        PYEOF
+        echo "::endgroup::"
+
+        echo "::group::Q3 -- Zeek _path field in zeek/zeek:7.0 notice.log"
+        docker compose exec -T zeek sh -c "head -1 /var/log/zeek/notice.log 2>/dev/null || echo NO_NOTICE_LOG" || true
+        echo "::endgroup::"
+
+        echo "::group::Q4 -- find -exec bash -n exit-status propagation"
+        mkdir -p /tmp/g01
+        printf '#!/bin/bash\nif [ true\n' > /tmp/g01/broken.sh
+        find /tmp/g01 -name '*.sh' -exec bash -n {} \; -exec echo "  [ok] {}" \;
+        echo "find exit code: $?"
+        echo "::endgroup::"
+
     - name: Dump compose logs on failure
       if: failure()
       run: docker compose logs --tail=200
