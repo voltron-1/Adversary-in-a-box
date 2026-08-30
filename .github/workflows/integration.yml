@@ -190,6 +190,19 @@ jobs:
         echo "find exit code: $?"
         echo "::endgroup::"
 
+        echo "::group::DEBUG -- why does containment_test.sh's gateway lookup fail?"
+        echo "--- id / uname inside victim-web ---"
+        docker compose exec -T victim-web sh -c "id; uname -a" || echo "EXEC_FAILED rc=$?"
+        echo "--- ls -la /proc/net/route ---"
+        docker compose exec -T victim-web sh -c "ls -la /proc/net/route" || echo "LS_FAILED rc=$?"
+        echo "--- cat /proc/net/route (raw, no shell) ---"
+        docker compose exec -T victim-web cat /proc/net/route; echo "CAT_EXIT=$?"
+        echo "--- cat /proc/net/route via sh -c ---"
+        docker compose exec -T victim-web sh -c "cat /proc/net/route"; echo "CAT_SHC_EXIT=$?"
+        echo "--- docker compose exec plain echo sanity check ---"
+        docker compose exec -T victim-web echo "hello-from-victim-web"; echo "ECHO_EXIT=$?"
+        echo "::endgroup::"
+
     - name: Run integration test
       env:
         AIB_RUN_INTEGRATION: "1"
