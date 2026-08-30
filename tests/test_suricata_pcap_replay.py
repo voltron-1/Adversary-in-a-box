@@ -14,12 +14,12 @@ are part of any subproject's runtime requirements.txt (this harness is the
 only consumer of either). CI installs both; skips cleanly everywhere else,
 consistent with the project's existing live-stack-only test pattern.
 
-Two cases (path_traversal / dns_tunnel_long) are known-broken: their rules
-use the wrong sticky buffer / byte offset and cannot fire against any real
-traffic shaped the way the rule's own msg/comment claims. That is exactly
-the class of bug G5.4 (#193) exists to fix. Encoding the current (broken)
-behavior here, instead of skipping or ignoring those two sids, is what
-makes them fixable-and-verifiable rather than silently wrong forever.
+G5.1 originally found two rules (sid:1000022, sid:1000050) using the wrong
+sticky buffer / byte offset, unable to fire against any real traffic shaped
+the way the rule's own msg/comment claimed; G5.4 (#193) rewrote both (plus
+sid:1000003 and sid:1000052, found broken/fragile the same way while
+building this harness) onto proper sticky buffers. The cases below assert
+the current, fixed behavior.
 """
 
 from __future__ import annotations
@@ -69,7 +69,6 @@ def _build_cases() -> dict:
         smtp_session,
         syn_packets,
         tcp_conversation,
-        udp_packet,
     )
 
     cases = {}
@@ -79,9 +78,13 @@ def _build_cases() -> dict:
         "build": lambda: syn_packets(OUTSIDE_A, HOME_B, 1000, 25),
         "expect_fire": {1000001, 1000002},
     }
-    cases["dns_version_scan"] = {
-        "build": lambda: udp_packet(
-            OUTSIDE_A, 53000, HOME_B, 53, b"\x00\x00\x10\x00\x01" + b"\x00" * 10
+    cases["dns_version_scan_chaos"] = {
+        # G5.4 (#193): sid:1000003 rewritten onto dns.query -- a real
+        # version-scan probe queries CHAOS-class TXT version.bind, not a
+        # coincidentally-zero transaction ID (the old rule's actual, dead
+        # match condition).
+        "build": lambda: dns_query(
+            OUTSIDE_A, 53000, HOME_B, 53, "version.bind", qtype="TXT", qclass="CH"
         ),
         "expect_fire": {1000003},
     }
@@ -144,14 +147,11 @@ def _build_cases() -> dict:
             b"GET /files/../../etc/passwd HTTP/1.1\r\nHost: victim-web\r\n\r\n",
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
         ),
-        # KNOWN BROKEN (G5.4 / #193): sid:1000022 matches on `http_uri`, which
-        # is libhtp's NORMALIZED uri buffer -- "../" is resolved away before
-        # that buffer is built. A real request with a literal "../" (as
-        # crafted here) never reaches the content match; the rule needs
-        # `http_raw_uri` instead. Confirmed locally by swapping the buffer on
-        # a throwaway copy of the rule and re-running this exact pcap.
-        "expect_fire": set(),
-        "note": "sid:1000022 cannot fire against any real traffic -- see G5.4 (#193)",
+        # G5.4 (#193): sid:1000022 now matches on http_raw_uri (the un-decoded
+        # wire bytes) instead of the old http_uri, which is libhtp's
+        # NORMALIZED uri buffer and resolved "../" away before the content
+        # match ever ran.
+        "expect_fire": {1000022},
     }
     cases["sqli_union_select"] = {
         "build": lambda: tcp_conversation(
@@ -276,6 +276,14 @@ def _build_cases() -> dict:
         ),
         "expect_fire": {1000040},
     }
+    cases["smb2_pass_the_hash"] = {
+        # G5.4 (#193): sid:1000040 only ever matched the SMB1 magic (|FF|SMB);
+        # real-world traffic today is SMB2/3 (|FE|SMB), which sid:1000043 adds.
+        "build": lambda: tcp_conversation(
+            OUTSIDE_A, 51026, HOME_B, 445, b"\xfeSMBrandom_bytes_here"
+        ),
+        "expect_fire": {1000043},
+    }
     cases["ssh_bruteforce_burst"] = {
         "build": lambda: syn_packets(HOME_A, HOME_B, 22, 6, dport_fixed=22),
         "expect_fire": {1000041, 1000042},
@@ -288,18 +296,10 @@ def _build_cases() -> dict:
     # --- EXFILTRATION ---
     cases["dns_tunnel_long_subdomain"] = {
         "build": lambda: dns_query(OUTSIDE_A, 53001, HOME_B, 53, "a" * 35 + ".tunnel.evil.example"),
-        # KNOWN BROKEN (G5.4 / #193): sid:1000050's content match is 10 raw
-        # bytes with no `offset`, so it is anchored at byte 0 of the UDP
-        # payload -- i.e. the DNS transaction ID itself, not the flags/
-        # QDCOUNT fields the rule's byte pattern actually encodes (those
-        # start at byte 2). No real, protocol-valid DNS query (which needs
-        # QDCOUNT=1 to even pass Suricata's dns probing parser) can also
-        # satisfy this rule's byte-0 anchor. Confirmed locally: a
-        # protocol-valid query with QDCOUNT=1 is correctly detected as DNS
-        # (proven by sid:1000051 firing on the same kind of traffic in
-        # dns_high_query_rate below) but never matches this content pattern.
-        "expect_fire": set(),
-        "note": "sid:1000050 cannot fire against any protocol-valid DNS query -- see G5.4 (#193)",
+        # G5.4 (#193): sid:1000050 rewritten onto dns.query + pcre, dropping
+        # the old raw-byte offset that was anchored at the DNS transaction ID
+        # instead of the flags/QDCOUNT fields it was meant to check.
+        "expect_fire": {1000050},
     }
     cases["dns_high_query_rate"] = {
         "build": lambda: [

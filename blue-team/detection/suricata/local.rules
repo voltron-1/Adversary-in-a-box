@@ -8,7 +8,13 @@
 # ---------------------------------------------------------------------------
 alert tcp any any -> $HOME_NET any (msg:"ET SCAN Nmap SYN Stealth Scan"; flags:S; threshold:type threshold,track by_src,count 20,seconds 1; classtype:attempted-recon; sid:1000001; rev:1;)
 alert tcp any any -> $HOME_NET any (msg:"ET SCAN Port Scan Detected - 10 ports in 5 sec"; flags:S; threshold:type threshold,track by_src,count 10,seconds 5; classtype:attempted-recon; sid:1000002; rev:1;)
-alert udp any any -> $HOME_NET 53 (msg:"ET RECON DNS Version Scan"; content:"|00 00 10 00 01|"; depth:5; classtype:attempted-recon; sid:1000003; rev:1;)
+# G5.4 (Gap J): the old rule keyed on 5 raw bytes at a fixed offset --
+# byte 0 is the DNS transaction ID, so this could only ever match a query
+# whose ID happened to be exactly 0x0000, never a real version-scan probe.
+# Real version-scan tooling (dig, nmap's dns-nsid, etc.) queries the CHAOS
+# class for TXT version.bind/version.server; match that against the proper
+# dns.query sticky buffer instead of guessing at header bytes.
+alert dns any any -> $HOME_NET 53 (msg:"ET RECON DNS Version Scan (CHAOS version.bind)"; dns.query; content:"version.bind"; nocase; classtype:attempted-recon; sid:1000003; rev:2;)
 
 # ---------------------------------------------------------------------------
 # INITIAL ACCESS — T1566 Phishing | T1190 Web Exploit
@@ -16,7 +22,14 @@ alert udp any any -> $HOME_NET 53 (msg:"ET RECON DNS Version Scan"; content:"|00
 alert smtp any any -> $HOME_NET 25 (msg:"ET PHISHING Suspicious Email - Executable Attachment"; content:"Content-Disposition: attachment"; content:"filename="; pcre:"/filename=\"[^\"]*\.(exe|bat|ps1|vbs|js|hta|pdf|doc|docm|zip|iso)\"/i"; classtype:social-engineering; sid:1000010; rev:2;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQL Injection Attempt OR 1=1"; content:"' OR"; http_uri; nocase; classtype:web-application-attack; sid:1000020; rev:1;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER XSS Attempt Script Tag"; content:"<script>"; http_uri; nocase; classtype:web-application-attack; sid:1000021; rev:1;)
-alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Path Traversal Attempt"; content:"../"; http_uri; classtype:web-application-attack; sid:1000022; rev:1;)
+# G5.4 (Gap J, found while building G5.1's harness -- not in the original
+# issue text, but the same class of bug): http_uri is libhtp's NORMALIZED
+# uri buffer, which resolves "../" away before this content match ever ran,
+# so the rule could not fire against any real traversal request. Confirmed
+# empirically: swapping to http_raw_uri (the un-decoded wire bytes) fires
+# correctly against the exact literal-".." payload red-team's own
+# exploit_web.py sends.
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Path Traversal Attempt"; content:"../"; http_raw_uri; classtype:web-application-attack; sid:1000022; rev:2;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQLi UNION SELECT"; content:"UNION SELECT"; http_uri; nocase; classtype:web-application-attack; sid:1000023; rev:1;)
 # G5.3 (Gap I): the four rules above only look at http_uri (the GET query
 # string) or, for sid:1000010, raw SMTP payload -- none of them match the
@@ -29,10 +42,9 @@ alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQLi UNION SELECT (reque
 # G5.3 (Gap I): red-team's exploit_web.py hits GET /file?name=<path> for its
 # path-traversal test (both a literal "../../../etc/passwd" and a
 # "..%2F..%2F..%2Fetc%2Fpasswd" URL-encoded variant). sid:1000022 only ever
-# sees the literal form (http_uri normalizes "../" away; http_raw_uri, once
-# G5.4 fixes 1000022 to use it, is un-decoded so "%2F" never becomes "/"
-# there either) -- an absolute-path-read endpoint being hit at all, with any
-# encoding, is itself the signal worth alerting on.
+# sees the literal form (http_raw_uri, its buffer as of G5.4, is un-decoded
+# so "%2F" never becomes "/" there) -- an absolute-path-read endpoint being
+# hit at all, with any encoding, is itself the signal worth alerting on.
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Absolute Path File Read"; content:"/file?name="; http_uri; classtype:web-application-attack; sid:1000027; rev:1;)
 
 # ---------------------------------------------------------------------------
@@ -44,6 +56,14 @@ alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET EXPLOIT Possible Privilege Esc
 # LATERAL MOVEMENT — T1550.002 Pass the Hash | T1563.001 SSH Hijack
 # ---------------------------------------------------------------------------
 alert tcp any any -> $HOME_NET 445 (msg:"ET LATERAL_MOVEMENT SMB Pass-the-Hash Attempt"; content:"|FF|SMB"; depth:5; classtype:policy-violation; sid:1000040; rev:1;)
+# G5.4 (Gap J): |FF|SMB is the SMB1 protocol magic; real-world SMB traffic
+# today, including any modern pass-the-hash tooling (impacket, etc.), is
+# SMB2/3, whose magic is |FE|SMB -- the original rule could never fire
+# against traffic any current tool actually sends. Add the SMB2 magic as
+# its own rule (both can legitimately coexist for older mixed environments)
+# and enable the smb app-layer parser (below, suricata.yaml) for visibility
+# even where no sid is written against it yet.
+alert tcp any any -> $HOME_NET 445 (msg:"ET LATERAL_MOVEMENT SMB2 Pass-the-Hash Attempt"; content:"|FE|SMB"; depth:4; classtype:policy-violation; sid:1000043; rev:1;)
 alert tcp any any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Multiple SSH Authentication Failures"; threshold:type both,track by_src,count 5,seconds 30; classtype:attempted-user; sid:1000041; rev:1;)
 alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH Connection - Possible Hijacking"; classtype:policy-violation; sid:1000042; rev:1;)
 
@@ -58,10 +78,22 @@ alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH C
 # is the syslog Sigma rule exfil_https.yml (audit-4 G2b ships the campaign's
 # advisory over syslog), plus Zeek for the DNS-tunnel side. See
 # docs/mitre-attack-map.md.
-alert dns any any -> any 53 (msg:"ET DNS_TUNNEL Long DNS Subdomain - Possible Tunneling"; content:"|01 00 00 01 00 00 00 00 00 00|"; depth:10; pcre:"/^[a-z2-7]{30,}\./"; classtype:trojan-activity; sid:1000050; rev:1;)
+# G5.4 (Gap J): the old rule's 10-byte content match had no `offset`, so it
+# was anchored at byte 0 of the UDP payload -- i.e. the DNS transaction ID
+# itself, not the flags/QDCOUNT fields the byte pattern was meant to check
+# (those start at byte 2). No protocol-valid DNS query (which needs
+# QDCOUNT=1 to even pass Suricata's dns probing parser and be evaluated as
+# a dns-typed rule at all) could also satisfy this rule's byte-0 anchor.
+# Match the long-subdomain pattern against the proper dns.query sticky
+# buffer instead, which sidesteps header-byte guessing entirely.
+alert dns any any -> any 53 (msg:"ET DNS_TUNNEL Long DNS Subdomain - Possible Tunneling"; dns.query; pcre:"/^[a-z2-7]{30,}\./i"; classtype:trojan-activity; sid:1000050; rev:2;)
 alert dns any any -> any 53 (msg:"ET DNS_TUNNEL High DNS Query Rate"; threshold:type threshold,track by_src,count 50,seconds 10; classtype:trojan-activity; sid:1000051; rev:1;)
 # (reference only -- cannot fire on air-gapped lab-net; see note above)
-alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"ET C2 Suspicious HTTPS Beacon - Non-standard User-Agent"; content:"User-Agent:"; http_header; nocase; pcre:"/User-Agent:[^\r\n]*(?!Mozilla|Chrome|Safari|curl|python)/"; classtype:trojan-activity; sid:1000052; rev:1;)
+# G5.4 (Gap J): rewritten onto the http.user_agent sticky buffer instead of
+# matching the literal "User-Agent:" header name via http_header + a pcre
+# re-searching for it -- the old form worked but re-derived, less reliably,
+# what http.user_agent already isolates for exactly this purpose.
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"ET C2 Suspicious HTTPS Beacon - Non-standard User-Agent"; http.user_agent; pcre:"/^(?!.*(Mozilla|Chrome|Safari|curl|python))/"; classtype:trojan-activity; sid:1000052; rev:2;)
 
 # ---------------------------------------------------------------------------
 # PERSISTENCE — T1053.003 Cron | T1098.004 SSH Keys
