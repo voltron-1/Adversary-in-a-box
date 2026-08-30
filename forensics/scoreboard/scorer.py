@@ -26,6 +26,11 @@ ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "http://elasticsearch:92
 # P1: directory of deployed Sigma rules the scoreboard evaluates against the
 # syslog-* advisories. Bind-mounted from blue-team/detection/sigma in the lab.
 SIGMA_RULES_DIR = os.environ.get("SIGMA_RULES_DIR", "/app/sigma")
+# G1.3: the real red-team container's lab-net address (matches the
+# ATTACKER_IP the red-team service stamps on its own events -- see
+# docker-compose.yml). Used to reject syslog-* docs forged by any other
+# lab-net peer before they can be counted as a Sigma detection.
+ATTACKER_IP = os.environ.get("ATTACKER_IP", "")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -125,6 +130,7 @@ class Scorer:
         """
         starts = self._hits("red-team-events-*", {"match": {"event_type": "campaign_start"}})
         ends = self._hits("red-team-events-*", {"match": {"event_type": "campaign_end"}})
+        starts, ends = self._drop_anomalous_lifecycle_events(starts, ends)
         alerts = self._hits("suricata-*", {"match": {"event_type": "alert"}})
         responses = self._hits("ir-events-*", {"match": {"event_type": "playbook_complete"}})
         alert_ts = [t for t in (_parse_ts(a.get("@timestamp")) for a in alerts) if t]
@@ -144,17 +150,60 @@ class Scorer:
         syslog-* carrying their rule's keywords; matching them here is what
         turns the otherwise-inert Sigma ruleset into scored detections.
         Degrades to [] if the rules dir is unmounted or syslog-* is empty.
+
+        G1.3: {"match_all": {}} let ANY lab-net peer forge a "detection" by
+        sending a syslog datagram containing a rule's keywords -- there was
+        no check that it actually came from the red-team container. Restrict
+        to docs whose provenance-stamped ingress IP (syslog.conf's
+        [observer][ingress][ip], set from the UDP sender address) matches
+        ATTACKER_IP. If ATTACKER_IP isn't configured, fail closed (query
+        nothing) rather than silently trusting every peer.
         """
         if not self._sigma_rules:
             return []
+        query: dict[str, Any] = (
+            {"term": {"observer.ingress.ip": ATTACKER_IP}}
+            if ATTACKER_IP
+            else {"bool": {"must_not": {"match_all": {}}}}
+        )
         out: list[float] = []
-        for doc in self._hits("syslog-*", {"match_all": {}}):
+        for doc in self._hits("syslog-*", query):
             text = f"{doc.get('message', '')} {doc.get('syslog_message', '')}"
             if sigma_eval.matched_rule(text, self._sigma_rules):
                 ts = _parse_ts(doc.get("@timestamp"))
                 if ts is not None:
                     out.append(ts)
         return out
+
+    @staticmethod
+    def _drop_anomalous_lifecycle_events(
+        starts: list[dict[str, Any]], ends: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """G1.3: reject red-team-events-* docs a forger could use to inflate
+        `campaigns_completed` or fabricate an earlier detection window.
+
+          * A campaign_end with no matching campaign_start for the same
+            campaign_id can't correspond to a real campaign run -- drop it
+            (len(ends) feeds directly into campaigns_completed).
+          * A doc whose @timestamp claims to predate its own server-stamped
+            event.ingested (siem/elasticsearch/ilm/ingest-pipeline.json) by
+            more than 60s is backdated. A forger controls @timestamp (it's
+            just a field in their POST body) but not event.ingested, which
+            Elasticsearch stamps itself at write time via the index's
+            default pipeline.
+        """
+        start_cids = {s.get("campaign_id") for s in starts if s.get("campaign_id")}
+
+        def _not_backdated(doc: dict[str, Any]) -> bool:
+            ts = _parse_ts(doc.get("@timestamp"))
+            ingested = _parse_ts((doc.get("event") or {}).get("ingested"))
+            if ts is None or ingested is None:
+                return True  # can't evaluate -- don't penalize missing data
+            return ts >= ingested - 60
+
+        starts = [s for s in starts if _not_backdated(s)]
+        ends = [e for e in ends if e.get("campaign_id") in start_cids and _not_backdated(e)]
+        return starts, ends
 
     @staticmethod
     def _windows(starts: list[dict[str, Any]]) -> list[tuple[str, float, float]]:
