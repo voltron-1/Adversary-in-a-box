@@ -93,15 +93,50 @@ program (`r0 = 0; exit;`, `BPF_PROG_TYPE_SOCKET_FILTER`) via a raw
 | Default caps, default seccomp | `bpf(BPF_PROG_LOAD) failed: Operation not permitted` |
 | `--cap-add=SYS_ADMIN --cap-add=BPF --cap-add=PERFMON`, default seccomp, **default (container-scoped) PID namespace** | `bpf(BPF_PROG_LOAD) OK, prog_fd=3` |
 
-No `--pid=host` needed. This is only a primitive-level, socket-filter-type
-program load, nowhere near a full Falco kprobe/tracepoint pipeline with a
-ring buffer — real Falco packages couldn't be pulled here either (same
-registry restriction), so this is not proof Falco itself would deploy
-cleanly. But it's a materially different, more favorable signal than
-auditd's hard wall: **basic eBPF program loading is scoped to the calling
-container's own capabilities, not gated on host PID namespace membership**,
-and this kernel does carry `/sys/kernel/btf/vmlinux` (needed for modern
-CO-RE eBPF probes, which is what Falco's default driver uses today).
+No `--pid=host` needed — a materially more favorable signal than auditd's
+hard wall: **basic eBPF program loading is scoped to the calling
+container's own capabilities, not gated on host PID namespace membership**.
+
+### Test 4 — the real `falco` binary, not just a synthetic probe
+
+Unlike Docker Hub / `docker.elastic.co` / `ghcr.io` (all policy-403'd),
+`mirror.gcr.io` turned out to mirror `falcosecurity/falco` and
+`falcosecurity/falco-no-driver` cleanly, so this went further than a
+synthetic program load: actually ran real Falco 0.39.2 against this real
+kernel.
+
+Falco starts, loads its config and the 25 default rules, and attempts to
+open the syscall source — with `-o log_level=debug -o
+libs_logger.severity=debug` the precise failure is:
+
+```
+[libs]: libpman: unable to bump RLIMIT_MEMLOCK to RLIM_INFINITY (errno: 1 | message: Operation not permitted)
+Error: unable to configure the libpman state.
+```
+
+Both Falco's modern-eBPF driver (`libpman`, ring-buffer/CO-RE based) *and*
+its legacy eBPF driver hit the identical wall: a `setrlimit(RLIMIT_MEMLOCK,
+RLIM_INFINITY)` call that needs `CAP_SYS_RESOURCE`. Confirmed via
+`/proc/1/status`: this session's own outer sandbox process is missing
+`CAP_SYS_RESOURCE` from its capability *bounding set* (not just its
+effective set), so the nested `dockerd` running inside it structurally
+cannot grant that capability to any child container, however it's
+`--cap-add`'d — this is the same class of restriction that blocked
+`docker pull hello-world` before `mirror.gcr.io` was found reachable, an
+artifact of this specific sandbox, not of Docker or Falco.
+
+**This is a materially better outcome than it looks.** Unlike auditd's
+`--pid=host` requirement (a security-posture tradeoff with no clean
+answer), `CAP_SYS_RESOURCE` is an ordinary Linux capability every real
+Docker host — bare metal, a cloud VM, even Docker Desktop's Linux VM — can
+grant to one container without touching any other container's isolation.
+The failure here is fully diagnosed and is specific to this sandbox's own
+restricted capability bounding set, not a property of Falco or of
+containerized eBPF in general. `falco -V/--validate <rules_file>` (schema
+validation only, no syscall source needed) still runs cleanly in this
+sandbox and was used to validate the lab's actual rules
+(`blue-team/detection/falco/lab_rules.yaml`) against the real binary in
+the implementation that followed this spike.
 
 ## What this means for #233 as scoped
 
@@ -137,23 +172,23 @@ recommended, with a real security-posture tradeoff attached.
 
 ## Disposition
 
-Not resolved here — this finding reopens the choice G-INFRA.1 (#197)
-made, rather than completing #233 as scoped. Recommend against
-implementing #233 as currently written (per-container auditd via
-capabilities alone; it cannot work). Two real paths forward, both
-needing a decision this doc doesn't make unilaterally given the
-`--pid=host` tradeoff above:
+This finding reopens the choice G-INFRA.1 (#197) made rather than
+completing #233 as scoped. Recommend against implementing #233 as
+currently written (per-container auditd via capabilities alone; it
+cannot work regardless of platform). Presented the fork — re-scope to
+Falco, accept `--pid=host` for auditd, move auditd to the host instead
+of per-container, or leave #233 blocked — for a decision, since the
+`--pid=host` tradeoff isn't this doc's to resolve unilaterally.
 
-1. **Falco (or another eBPF-based collector)**, re-evaluated as the
-   primary candidate instead of auditd, given eBPF program loading did
-   *not* hit the same init-PID-namespace wall in this environment.
-   Genuinely unverified beyond the primitive-load test above (no live
-   Falco build was reachable to test end-to-end here).
-2. **Host-level auditd** (not per-container) watching the Docker
-   storage driver's per-container overlay paths, accepting the
-   runtime-coupling fragility named above, closer in shape to what
-   G-INFRA.1's own evaluation table already flagged as a downside of
-   any host-wide approach.
-
-Neither is implemented in this change. #233 should not proceed on its
-current text without this decision being made first.
+**Decision: re-scope #233 to Falco.** Test 4 above is the deciding
+evidence — Falco's actual blocker (`CAP_SYS_RESOURCE`, an ordinary
+per-container capability grant) is a fundamentally different, much
+smaller ask than auditd's (`--pid=host`, host-wide process visibility on
+a container designed to be attacked), and it's specific to this sandbox
+rather than to containerized deployment generally. The Falco-based
+implementation (compose service, custom rules for
+T1053.003/T1548.001/T1098.004/T1486, syslog ingestion, scoring) is a
+separate change; see its own PR for what shipped and what remains
+unverified end-to-end in this sandbox (full syscall capture, since
+`CAP_SYS_RESOURCE` couldn't be exercised here) versus what real-binary
+validation (`falco -V`) did confirm.
