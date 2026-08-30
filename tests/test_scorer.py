@@ -185,5 +185,114 @@ class TestG13ProvenanceIntegrity(unittest.TestCase):
         self.assertEqual(scorer._sigma_detection_ts(), [])
 
 
+class TestG61ZeekNoticeScoring(unittest.TestCase):
+    """G6.1: Zeek notice.log entries (real behavioral detections) must count
+    toward MTTD scoring, the same trust level as a Suricata alert -- not
+    gated behind ATTACKER_IP/Sigma the way a self-reported syslog marker is,
+    since a notice comes from Zeek parsing real observed packets."""
+
+    def _fresh_scorer(self):
+        if "scorer" in sys.modules:
+            del sys.modules["scorer"]
+        import scorer  # noqa: F401
+
+        return sys.modules["scorer"]
+
+    def test_queries_zeek_index_for_docs_with_a_note_field(self):
+        s = self._fresh_scorer()
+        seen = []
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                seen.append((index, body.get("query")))
+                return default
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        scorer._zeek_notice_ts()
+        self.assertEqual(seen, [("zeek-*", {"exists": {"field": "note"}})])
+
+    def test_extracts_timestamps_from_matching_docs(self):
+        s = self._fresh_scorer()
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                return {
+                    "hits": {
+                        "hits": [
+                            {
+                                "_source": {
+                                    "note": "DnsExfil::High_Entropy_Subdomain",
+                                    "@timestamp": "2026-05-31T10:00:00+00:00",
+                                }
+                            },
+                        ]
+                    }
+                }
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        self.assertEqual(len(scorer._zeek_notice_ts()), 1)
+
+    def test_not_gated_on_attacker_ip(self):
+        # Unlike _sigma_detection_ts, a missing/unset ATTACKER_IP must not
+        # suppress zeek notice scoring -- notices aren't forgeable the way a
+        # raw syslog datagram is.
+        os.environ.pop("ATTACKER_IP", None)
+        s = self._fresh_scorer()
+        self.assertEqual(s.ATTACKER_IP, "")
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                return {
+                    "hits": {
+                        "hits": [
+                            {
+                                "_source": {
+                                    "note": "ArpSpoof::Duplicate_IP_MAC_Binding",
+                                    "@timestamp": "2026-05-31T10:00:00+00:00",
+                                }
+                            },
+                        ]
+                    }
+                }
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        self.assertEqual(len(scorer._zeek_notice_ts()), 1)
+
+    def test_fetch_merges_suricata_sigma_and_zeek_detections(self):
+        # The whole point of G6.1: a Zeek-only detection must show up in the
+        # same alert_ts list a Suricata alert would, not a separate,
+        # uncounted stream.
+        s = self._fresh_scorer()
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                if index == "suricata-*":
+                    return {
+                        "hits": {
+                            "hits": [
+                                {"_source": {"@timestamp": "2026-05-31T10:00:00+00:00"}},
+                            ]
+                        }
+                    }
+                if index == "zeek-*":
+                    return {
+                        "hits": {
+                            "hits": [
+                                {
+                                    "_source": {
+                                        "note": "ExfilVolume::High_Outbound_Volume",
+                                        "@timestamp": "2026-05-31T10:05:00+00:00",
+                                    }
+                                },
+                            ]
+                        }
+                    }
+                return default
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        _starts, _ends, alert_ts, _responses = scorer._fetch()
+        self.assertEqual(len(alert_ts), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,8 @@
 @load scripts/dns_exfil
 @load scripts/port_scan
 @load scripts/lateral_movement
+@load scripts/arp_spoof
+@load scripts/exfil_volume
 
 # Configure log paths
 redef Log::default_logdir = "/var/log/zeek/";
@@ -55,6 +57,12 @@ hook Notice::policy(n: Notice::Info) {
     if (n$note == LateralMovement::Internal_SMB_Lateral_Movement)
         add n$actions[Notice::ACTION_LOG];
     if (n$note == DnsExfil::DNS_Tunnel_Detected)
+        add n$actions[Notice::ACTION_LOG];
+    # G6.1: real, general-purpose detectors (production-reference for this
+    # lab's own simulated campaigns; see arp_spoof.zeek/exfil_volume.zeek).
+    if (n$note == ArpSpoof::Duplicate_IP_MAC_Binding)
+        add n$actions[Notice::ACTION_LOG];
+    if (n$note == ExfilVolume::High_Outbound_Volume)
         add n$actions[Notice::ACTION_LOG];
     # G6.2: suppress the lab PKI's own expected self-signed-chain notice.
     # An empty ActionSet strips every action a default policy already
