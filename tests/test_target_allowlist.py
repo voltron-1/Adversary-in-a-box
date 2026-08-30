@@ -233,6 +233,112 @@ class TestRunnerCliFailsClosed(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
         self.assertNotIn("out-of-scope", (proc.stdout + proc.stderr).lower())
 
+    def test_out_of_scope_mitm_victim_rejected(self):
+        # P8: credential_access.mitm reads MITM_VICTIM from env -- previously
+        # untested end-to-end (no dedicated test existed for this variable).
+        proc = self._run(
+            "--campaign",
+            "mitm",
+            "--dry-run",
+            env_extra={"MITM_VICTIM": "attacker.example.invalid"},
+        )
+        self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertIn("out-of-scope", (proc.stdout + proc.stderr).lower())
+
+    def test_out_of_scope_siem_host_rejected(self):
+        # G3.6 (Gap G): SIEM_HOST is where a campaign's own attack telemetry
+        # gets sent. An out-of-scope value would exfiltrate that telemetry to
+        # an attacker-controlled host instead of the real SIEM.
+        proc = self._run(
+            "--campaign",
+            "recon",
+            "--dry-run",
+            env_extra={"SIEM_HOST": "attacker.example.invalid"},
+        )
+        self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertIn("out-of-scope", (proc.stdout + proc.stderr).lower())
+
+    def test_out_of_scope_siem_syslog_host_rejected(self):
+        # G3.6: same gate for the syslog advisory sink (emit_syslog_advisory).
+        proc = self._run(
+            "--campaign",
+            "recon",
+            "--dry-run",
+            env_extra={"SIEM_SYSLOG_HOST": "attacker.example.invalid"},
+        )
+        self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertIn("out-of-scope", (proc.stdout + proc.stderr).lower())
+
+    def test_in_lab_siem_syslog_host_passes_gate(self):
+        # The real deployed default ("logstash", a docker-compose service
+        # name) must clear the gate even with no lab-net DNS available.
+        proc = self._run("--campaign", "recon", "--dry-run")
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertNotIn("out-of-scope", (proc.stdout + proc.stderr).lower())
+
+    def test_out_of_scope_c2_url_rejected(self):
+        # G3.6: C2_URL is fictional adversary infra by design (the shipped
+        # default doesn't resolve), but a value that DOES resolve outside the
+        # lab is the real escape-risk primitive and must be rejected.
+        proc = self._run(
+            "--campaign",
+            "exfil",
+            "--dry-run",
+            env_extra={"C2_URL": "https://example.com/collect"},
+        )
+        self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertIn("out-of-scope", (proc.stdout + proc.stderr).lower())
+
+    def test_default_c2_url_not_rejected(self):
+        # The shipped default (c2.lab.local) does not resolve at all -- must
+        # be treated as safe-by-construction, not rejected as out-of-scope.
+        proc = self._run("--campaign", "exfil", "--dry-run")
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertNotIn("out-of-scope", (proc.stdout + proc.stderr).lower())
+
+    def test_out_of_scope_c2_dns_domain_rejected(self):
+        # G3.6: same loose-resolution semantics for the DNS-tunnel domain.
+        proc = self._run(
+            "--campaign",
+            "exfil",
+            "--dry-run",
+            env_extra={"C2_DNS_DOMAIN": "example.com"},
+        )
+        self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertIn("out-of-scope", (proc.stdout + proc.stderr).lower())
+
+
+class TestC2ValueVetting(unittest.TestCase):
+    """G3.6: _vet_c2_value's loose semantics -- unlike _vet_and_pin_target, a
+    non-resolving value is safe-by-construction (matches the shipped
+    fictional defaults); only a value resolving OUTSIDE the lab is rejected.
+    """
+
+    def setUp(self):
+        os.environ["LAB_NET_PREFIX"] = "172.20.0"
+
+    def tearDown(self):
+        os.environ.pop("LAB_NET_PREFIX", None)
+
+    def test_non_resolving_value_is_allowed(self):
+        with mock.patch.object(runner.socket, "gethostbyname", side_effect=OSError("no such host")):
+            runner._vet_c2_value("https://c2.lab.local/collect")  # must not raise
+
+    def test_in_lab_resolving_value_is_allowed(self):
+        with mock.patch.object(runner.socket, "gethostbyname", return_value="172.20.0.50"):
+            runner._vet_c2_value("https://c2-box/collect")  # must not raise
+
+    def test_out_of_lab_resolving_value_is_rejected(self):
+        with mock.patch.object(runner.socket, "gethostbyname", return_value="203.0.113.7"):
+            with self.assertRaises(SystemExit) as cm:
+                runner._vet_c2_value("https://evil.example.com/collect")
+        self.assertNotEqual(cm.exception.code, 0)
+
+    def test_lab_hostname_is_allowed_unresolved(self):
+        with mock.patch.object(runner.socket, "gethostbyname") as gh:
+            runner._vet_c2_value("victim-web")  # must not raise
+            gh.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
