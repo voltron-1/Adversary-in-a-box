@@ -251,6 +251,13 @@ LAB_HOSTNAMES = frozenset(
         "victim-web",
         "victim-db",
         "victim-mail",
+        # G3.6: SIEM_HOST/SIEM_SYSLOG_HOST default to these docker-compose
+        # service names in the real deployed lab (.env.example, mitre_tagger.py,
+        # base_campaign.py). Trusted by name for the same reason as the
+        # victims above -- vetting must not depend on DNS being available
+        # (e.g. a bare CI runner with no lab-net has no way to resolve them).
+        "elasticsearch",
+        "logstash",
     }
 )
 
@@ -260,12 +267,48 @@ LAB_HOSTNAMES = frozenset(
 # all straight from the environment. Each is vetted against the allowlist in
 # run_campaign before any campaign fires, so none can be pointed out of scope.
 # Keep in sync with the os.environ.get("TARGET_*"/"MITM_*") reads in campaigns/.
+#
+# G3.6 (Gap G): SIEM_HOST/SIEM_SYSLOG_HOST added -- these are the destinations
+# a campaign's own attack telemetry gets sent to (mitre_tagger.py,
+# base_campaign.emit_syslog_advisory). An operator-set value pointing either
+# outside the lab would let a campaign exfiltrate its own attack telemetry to
+# an attacker-controlled host instead of the real SIEM -- the actual
+# escape-risk primitive this whole gate exists for, not a detection gap.
 TARGET_ENV_VARS = (
     "TARGET_WEB",  # exploit_web / brute_force / recon (also --target default)
     "TARGET_MAIL_HOST",  # phishing.spear_phish — SMTP connection
     "TARGET_DB_HOST",  # lateral_movement.pass_the_hash
     "MITM_VICTIM",  # credential_access.mitm — spoofed victim host
+    "SIEM_HOST",  # mitre_tagger.MitreTagger — attack-event telemetry sink
+    "SIEM_SYSLOG_HOST",  # base_campaign.emit_syslog_advisory — syslog sink
 )
+
+# G3.6: C2_URL/C2_DNS_DOMAIN represent FICTIONAL adversary infrastructure --
+# by design their built-in defaults (c2.lab.local, exfil.lab.local) do NOT
+# resolve, and the campaigns simulate the connection when they don't (see
+# https_exfil.py._beacon/_exfiltrate, dns_tunnel.py._exfiltrate_via_dns,
+# which never makes a real DNS query). Vetting them the same way as
+# TARGET_ENV_VARS (which REQUIRES resolution into the lab) would reject that
+# intentionally-non-resolving default and break the campaigns' normal path.
+# _vet_c2_value below instead only rejects a value that resolves to somewhere
+# OUTSIDE the lab -- an operator pointing a campaign at a real, reachable C2
+# domain -- while leaving a non-resolving (safe-by-construction) value alone.
+C2_ENV_VARS = ("C2_URL", "C2_DNS_DOMAIN")
+
+# G3.6: the campaigns' own built-in defaults, duplicated here (same tradeoff
+# as DEFAULT_WEB_TARGET below) so the allowlist sweep can vet the EFFECTIVE
+# value even when the operator hasn't set the var -- otherwise a future edit
+# to one of these defaults that silently pointed it out of the lab would
+# never be caught by this gate. Keep in sync with the os.environ.get(...)
+# calls in mitre_tagger.py / base_campaign.py / https_exfil.py / dns_tunnel.py.
+_TARGET_ENV_DEFAULTS = {
+    "SIEM_HOST": "172.20.0.50",
+    "SIEM_SYSLOG_HOST": "logstash",
+}
+_C2_ENV_DEFAULTS = {
+    "C2_URL": "https://c2.lab.local/collect",
+    "C2_DNS_DOMAIN": "exfil.lab.local",
+}
 
 
 def _target_host(target: str) -> str:
@@ -397,6 +440,22 @@ def _vet_and_pin_target(target: str) -> str:
     return _pin_host_in_target(target, str(ip))
 
 
+def _vet_c2_value(val: str) -> None:
+    """G3.6: validate a C2_ENV_VARS value. See that constant's docstring --
+    unlike _vet_and_pin_target, a value that fails to resolve at all is left
+    alone (the shipped defaults are intentionally fictional, non-resolving
+    domains); only a value that resolves to somewhere OUTSIDE the lab is
+    rejected. Never pins: C2_DNS_DOMAIN is used as a DNS-label suffix
+    (f"{chunk}.{domain}"), not a connect target, so rewriting it to a raw IP
+    would produce an invalid tunneled query."""
+    host = _target_host(val)
+    if not host or host in LAB_HOSTNAMES:
+        return
+    ip = _resolve_host_ip(host)
+    if ip is not None and not any(ip in net for net in _lab_networks()):
+        _reject_target(val, host)
+
+
 # P8 (R1): the in-lab default web target, used when neither --target nor
 # TARGET_WEB is supplied. Pulled out of its two former inline call sites so the
 # guard below can fail fast at import if a future edit (e.g. a template copy)
@@ -416,9 +475,9 @@ def _within_canonical_lab(host: str) -> bool:
         return False
 
 
-assert _within_canonical_lab(
-    _target_host(DEFAULT_WEB_TARGET)
-), f"DEFAULT_WEB_TARGET {DEFAULT_WEB_TARGET!r} is outside the canonical lab range"
+assert _within_canonical_lab(_target_host(DEFAULT_WEB_TARGET)), (
+    f"DEFAULT_WEB_TARGET {DEFAULT_WEB_TARGET!r} is outside the canonical lab range"
+)
 
 
 def run_campaign(campaign, technique, target, dry_run, force):
@@ -455,18 +514,26 @@ def run_campaign(campaign, technique, target, dry_run, force):
     console.print(f"[dim]Description: {cfg['description']}[/dim]\n")
 
     # P8 (R1): vet EVERY operator-supplied target before anything fires --
-    # --target plus each TARGET_* / MITM_* env var a campaign may dial out to.
-    # The built-in lab defaults are trusted; only values the operator actually
-    # set are checked. full-killchain runs every campaign, so a single sweep
-    # here covers the single-campaign and kill-chain paths alike.
+    # --target plus each TARGET_* / MITM_* / SIEM_* env var a campaign may
+    # dial out to. full-killchain runs every campaign, so a single sweep here
+    # covers the single-campaign and kill-chain paths alike.
     # #145: vet-and-pin rewrites a vetted hostname to its resolved IP, so the
     # value the campaign actually dials is the one the allowlist approved.
+    # G3.6: vet the EFFECTIVE value (operator override, or the campaign's own
+    # built-in default via _TARGET_ENV_DEFAULTS/_C2_ENV_DEFAULTS) rather than
+    # skipping vetting whenever the operator hasn't set the var -- a future
+    # edit that silently changed one of those defaults would otherwise never
+    # be caught by this gate.
     if target:
         target = _vet_and_pin_target(target)
     for var in TARGET_ENV_VARS:
-        val = os.environ.get(var)
+        val = os.environ.get(var, _TARGET_ENV_DEFAULTS.get(var))
         if val:
             os.environ[var] = _vet_and_pin_target(val)
+    for var in C2_ENV_VARS:
+        val = os.environ.get(var, _C2_ENV_DEFAULTS.get(var))
+        if val:
+            _vet_c2_value(val)
 
     if dry_run:
         console.print("[yellow]DRY RUN — no actions will be executed[/yellow]")

