@@ -4,6 +4,11 @@
 # Reverse isolate_host.sh: reconnect a quarantined container to lab-net.
 #
 # Usage: bash restore_host.sh <container_name>
+#
+# G4.6: the evidence log attributes this action to $IR_OPERATOR (threaded
+# by the dashboard from the operator-supplied `operator` request field, see
+# blue-team/dashboard/app.py). $USER is always unset in this container, so
+# the old "${USER:-unknown}" fallback logged "unknown" for every run.
 
 set -euo pipefail
 
@@ -67,7 +72,7 @@ fi
 EVIDENCE_DIR="${EVIDENCE_DIR:-/evidence}"
 mkdir -p "$EVIDENCE_DIR"
 cat >> "$EVIDENCE_DIR/isolation_log.json" <<EOF
-{"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","action":"restore","host":"$TARGET","operator":"${USER:-unknown}"}
+{"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","action":"restore","host":"$TARGET","operator":"${IR_OPERATOR:-unknown}"}
 EOF
 
 echo "[IR] ${TARGET} restored to ${LAB_NET}."

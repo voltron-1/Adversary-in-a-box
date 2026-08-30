@@ -9,6 +9,11 @@
 # Requires the docker socket to be mounted into the blue-team container
 # (set in docker-compose.yml). Run with the same Docker context that brought
 # up the lab compose project.
+#
+# G4.6: the evidence log attributes this action to $IR_OPERATOR (threaded
+# by the dashboard from the operator-supplied `operator` request field, see
+# blue-team/dashboard/app.py). $USER is always unset in this container, so
+# the old "${USER:-unknown}" fallback logged "unknown" for every run.
 
 set -euo pipefail
 
@@ -74,7 +79,7 @@ fi
 EVIDENCE_DIR="${EVIDENCE_DIR:-/evidence}"
 mkdir -p "$EVIDENCE_DIR"
 cat >> "$EVIDENCE_DIR/isolation_log.json" <<EOF
-{"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","action":"isolate","host":"$TARGET","operator":"${USER:-unknown}"}
+{"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","action":"isolate","host":"$TARGET","operator":"${IR_OPERATOR:-unknown}"}
 EOF
 
 echo "[IR] ${TARGET} is now isolated. Forensic channel: ${QUARANTINE_NET}"
