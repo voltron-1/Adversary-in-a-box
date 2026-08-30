@@ -311,11 +311,14 @@ services:
     restart: unless-stopped
 
   # P7 (S3): one-shot ILM bootstrap (mirrors the pki-init pattern). Waits for
-  # Elasticsearch, then installs the aib-retention-7d ILM policy and the
-  # aib-logs index template so every lab telemetry index (suricata-*, zeek-*,
-  # syslog-*, red-team-events-*, ir-events-*) is auto-deleted 7 days after
-  # creation. Idempotent: PUTs overwrite. Data producers (logstash) wait on its
-  # successful completion so their indices inherit the policy.
+  # Elasticsearch, then installs the aib-retention-7d ILM policy, the
+  # aib-ingest-stamp default pipeline (G1.3: stamps a server-side
+  # event.ingested no poster can forge), and the aib-logs index template
+  # attaching both to every lab telemetry index (suricata-*, zeek-*,
+  # syslog-*, red-team-events-*, ir-events-*) -- 7-day auto-delete plus a
+  # trustworthy ingest timestamp. Idempotent: PUTs overwrite. Data producers
+  # (logstash) wait on its successful completion so their indices inherit
+  # both.
   es-init:
     image: curlimages/curl:8.6.0
     hostname: es-init
@@ -347,6 +350,10 @@ services:
         echo "[es-init] installing ILM retention policy aib-retention-7d (delete >7d)..."
         curl -fsS -X PUT "$${ELASTICSEARCH_URL}/_ilm/policy/aib-retention-7d" \
           -H 'Content-Type: application/json' --data @/ilm/ilm-policy.json
+        echo
+        echo "[es-init] installing ingest pipeline aib-ingest-stamp (G1.3: server-side event.ingested)..."
+        curl -fsS -X PUT "$${ELASTICSEARCH_URL}/_ingest/pipeline/aib-ingest-stamp" \
+          -H 'Content-Type: application/json' --data @/ilm/ingest-pipeline.json
         echo
         echo "[es-init] installing index template aib-logs..."
         curl -fsS -X PUT "$${ELASTICSEARCH_URL}/_index_template/aib-logs" \
@@ -465,6 +472,9 @@ services:
       # unset/default disables the endpoint (fail closed); the read-only
       # scoreboard still serves. Set a unique value in .env to enable awards.
       - SCOREBOARD_AUTH_TOKEN=${SCOREBOARD_AUTH_TOKEN:-}
+      # G1.3: matches red-team's own ATTACKER_IP so scorer.py can reject a
+      # syslog "detection" forged by any other lab-net peer.
+      - ATTACKER_IP=${LAB_NET_PREFIX:-172.20.0}.10
       # G1.4: matches red-team/blue-team's LOG_LEVEL convention so the award
       # audit-trail log (#143) actually reaches container logs.
       - LOG_LEVEL=${LOG_LEVEL:-INFO}

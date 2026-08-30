@@ -17,9 +17,11 @@ REPO = Path(__file__).parent.parent
 ILM_DIR = REPO / "siem" / "elasticsearch" / "ilm"
 POLICY = ILM_DIR / "ilm-policy.json"
 TEMPLATE = ILM_DIR / "index-template.json"
+PIPELINE = ILM_DIR / "ingest-pipeline.json"
 COMPOSE = REPO / "docker-compose.yml"
 
 POLICY_NAME = "aib-retention-7d"
+PIPELINE_NAME = "aib-ingest-stamp"
 EXPECTED_PATTERNS = {
     "suricata-*",
     "zeek-*",
@@ -55,6 +57,26 @@ class TestIndexTemplate(unittest.TestCase):
         settings = tpl["template"]["settings"]
         self.assertEqual(settings["index.lifecycle.name"], POLICY_NAME)
 
+    def test_template_attaches_ingest_pipeline(self):
+        # G1.3: every lab index gets a server-side event.ingested stamp no
+        # poster can forge, so the scorer can detect a backdated @timestamp.
+        tpl = json.loads(TEMPLATE.read_text())
+        settings = tpl["template"]["settings"]
+        self.assertEqual(settings["index.default_pipeline"], PIPELINE_NAME)
+
+
+class TestIngestPipeline(unittest.TestCase):
+    def test_pipeline_is_valid_json(self):
+        self.assertTrue(PIPELINE.exists(), f"missing {PIPELINE}")
+        json.loads(PIPELINE.read_text())
+
+    def test_pipeline_sets_event_ingested_from_ingest_timestamp(self):
+        pipeline = json.loads(PIPELINE.read_text())
+        set_processors = [p["set"] for p in pipeline["processors"] if "set" in p]
+        matches = [p for p in set_processors if p.get("field") == "event.ingested"]
+        self.assertEqual(len(matches), 1, "expected exactly one set-event.ingested processor")
+        self.assertIn("_ingest.timestamp", matches[0]["value"])
+
 
 class TestComposeWiring(unittest.TestCase):
     @classmethod
@@ -79,6 +101,19 @@ class TestComposeWiring(unittest.TestCase):
         script = "".join(self.compose["services"]["es-init"]["entrypoint"])
         self.assertIn("_ilm/policy/" + POLICY_NAME, script)
         self.assertIn("_index_template/aib-logs", script)
+
+    def test_es_init_installs_ingest_pipeline_before_template(self):
+        # G1.3: the pipeline must exist before the template that references
+        # it as its default_pipeline, or the template PUT would reference an
+        # unknown pipeline (ES accepts it either way, but installing the
+        # pipeline first keeps the bootstrap order intentional and matches
+        # the ILM-policy-before-template pattern already established here).
+        script = "".join(self.compose["services"]["es-init"]["entrypoint"])
+        self.assertIn("_ingest/pipeline/" + PIPELINE_NAME, script)
+        self.assertLess(
+            script.index("_ingest/pipeline/" + PIPELINE_NAME),
+            script.index("_index_template/aib-logs"),
+        )
 
     def test_logstash_waits_for_es_init(self):
         dep = self.compose["services"]["logstash"]["depends_on"]
