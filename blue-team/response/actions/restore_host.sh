@@ -21,6 +21,26 @@ if [[ -z "$TARGET" ]]; then
     exit 1
 fi
 
+# G4.5: $TARGET reaches docker/bash argv (CWE-88 argument injection) and
+# ultimately affects lab-net/quarantine-net membership. Reject anything
+# outside the dashboard's own hostname-safe charset (blue-team/dashboard/
+# app.py's _SAFE_HOST_RE) before it touches any command, and refuse to
+# touch infrastructure services regardless of charset validity.
+_SAFE_HOST_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$'
+if [[ ! "$TARGET" =~ $_SAFE_HOST_RE ]]; then
+    echo "[ERROR] invalid target '${TARGET}': must match ${_SAFE_HOST_RE}" >&2
+    exit 1
+fi
+
+_INFRA_SERVICES=(elasticsearch logstash kibana blue-team)
+_target_service="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' -- "$TARGET" 2>/dev/null || true)"
+for _infra in "${_INFRA_SERVICES[@]}"; do
+    if [[ "$_target_service" == "$_infra" ]]; then
+        echo "[ERROR] refusing to restore infrastructure service '${_target_service}' (container ${TARGET})" >&2
+        exit 1
+    fi
+done
+
 # G4.4: idempotent, post-condition-checked network moves. The previous
 # version's connect (below) had no `|| true` guard while its disconnect
 # did -- a re-run against an already-restored host hit "already exists" on
@@ -30,8 +50,8 @@ fi
 # declaring success.
 is_connected() {
     local network="$1" target="$2"
-    docker network inspect "$network" --format '{{range .Containers}}{{.Name}}
-{{end}}' 2>/dev/null | grep -qxF "$target"
+    docker network inspect --format '{{range .Containers}}{{.Name}}
+{{end}}' -- "$network" 2>/dev/null | grep -qxF "$target"
 }
 
 connect_network() {
@@ -40,7 +60,7 @@ connect_network() {
         echo "[IR] ${target} already connected to ${network}; skipping."
         return 0
     fi
-    docker network connect "$network" "$target"
+    docker network connect -- "$network" "$target"
 }
 
 disconnect_network() {
@@ -49,7 +69,7 @@ disconnect_network() {
         echo "[IR] ${target} already disconnected from ${network}; skipping."
         return 0
     fi
-    docker network disconnect "$network" "$target"
+    docker network disconnect -- "$network" "$target"
 }
 
 echo "[IR] Reconnecting ${TARGET} to ${LAB_NET}..."
