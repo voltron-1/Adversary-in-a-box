@@ -67,6 +67,13 @@ for rule in "${rules[@]}"; do
         -f siem_rule \
         "$rule" \
         > "$out"
+    # G2.2: `sigma convert` exiting 0 doesn't guarantee usable output -- a
+    # degenerate or empty result (e.g. the wrong pipeline silently producing
+    # `[]` or `""`) would previously pass this script and CI's compile step
+    # green with nothing actually compiled. Assert the output is a real JSON
+    # object before calling this file done.
+    jq -e 'type == "object"' "$out" >/dev/null \
+        || { echo "[ERROR] $out is not a JSON object -- sigma convert produced degenerate output for $name" >&2; exit 1; }
 done
 
 if [[ "${REBASE:-0}" == "1" ]]; then
