@@ -71,9 +71,12 @@ class ContainmentTestHarness:
                     fi
                     exit 2
                 fi
-                if [[ "$args" == *"/proc/net/route"* ]]; then
-                    # Fixed little-endian hex for 192.0.2.1 (gateway lookup).
-                    echo "010200C0"
+                if [[ "$args" == *"cat /proc/net/route"* ]]; then
+                    # Real /proc/net/route is tab-separated with a header row;
+                    # the script must skip the header and find the Destination
+                    # 00000000 row itself (little-endian hex for 192.0.2.1).
+                    printf 'Iface\tDestination\tGateway\tFlags\n'
+                    printf 'eth0\t00000000\t010200C0\t0003\n'
                     exit 0
                 fi
                 if [[ "$args" == *"/dev/tcp/192.0.2.1/"* ]]; then
@@ -144,6 +147,39 @@ class TestContainmentTestScript(unittest.TestCase):
             result = h.run()
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
         self.assertIn("is not running or not exec-able", result.stdout)
+
+    def test_exits_4_when_gateway_undetectable(self) -> None:
+        # Regression test for run 33298526519: an earlier version piped
+        # /proc/net/route through `awk` INSIDE the container. python:3.11-slim,
+        # mysql:8.0, and debian:bullseye-slim all lack awk, so the pipe came
+        # back empty (stderr was hidden by 2>/dev/null) on every real victim --
+        # this simulates that empty result directly, regardless of cause.
+        with tempfile.TemporaryDirectory() as tmp:
+            h = ContainmentTestHarness(Path(tmp))
+            _make_stub(
+                h.bin / "docker",
+                textwrap.dedent("""\
+                    #!/usr/bin/env bash
+                    args="$*"
+                    if [[ "$args" == "compose exec -T "*" true" ]]; then
+                        exit 0
+                    fi
+                    if [[ "$args" == *"getent"* ]]; then
+                        exit 2
+                    fi
+                    if [[ "$args" == *"cat /proc/net/route"* ]]; then
+                        exit 0  # empty stdout, e.g. a missing tool inside the container
+                    fi
+                    if [[ "$args" == *"/dev/tcp/"* ]]; then
+                        exit 1
+                    fi
+                    exit 0
+                    """),
+            )
+            result = h.run()
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+        self.assertIn("could not determine", result.stdout)
+        self.assertIn("default gateway", result.stdout)
 
     def test_most_severe_failure_wins_exit_code(self) -> None:
         # tcp (1) and gateway (3) both fail -- exit code must be the more

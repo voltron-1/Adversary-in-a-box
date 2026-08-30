@@ -81,12 +81,23 @@ exec_dns_resolve() {
 }
 
 # Gateway IP from /proc/net/route (little-endian hex) -- pure bash arithmetic,
-# no ip/route binary needed. Prints empty on failure.
+# no ip/route binary needed. Parses the route table in THIS shell (`cat` is
+# reliably present in every image; `awk` is not -- an earlier version piped
+# through `awk` inside the container and came back empty on all three victims
+# in a real run, run 33298526519, because none of python:3.11-slim,
+# mysql:8.0, or debian:bullseye-slim ship it, and 2>/dev/null was hiding the
+# resulting "awk: not found"). Prints empty on failure.
 exec_gateway_ip() {
     local victim="$1"
-    local hex
-    hex=$(docker compose exec -T "$victim" sh -c \
-        "awk '\$2==\"00000000\"{print \$3; exit}' /proc/net/route" 2>/dev/null | tr -d '\r\n')
+    local route_table hex="" iface dest gw rest
+    route_table=$(docker compose exec -T "$victim" cat /proc/net/route 2>/dev/null)
+    # shellcheck disable=SC2034  # iface/rest are unpacked but unused
+    while IFS=$' \t' read -r iface dest gw rest; do
+        if [[ "$dest" == "00000000" ]]; then
+            hex="$gw"
+            break
+        fi
+    done <<< "$route_table"
     if [[ ! "$hex" =~ ^[0-9A-Fa-f]{8}$ ]]; then
         return 1
     fi
