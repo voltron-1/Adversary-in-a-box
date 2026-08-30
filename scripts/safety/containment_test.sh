@@ -18,9 +18,11 @@
 # Deliberately avoids assuming python3/ip/dig/nc exist inside the victims --
 # victim-web/db/mail are three different base images (python:3.11-slim,
 # mysql:8.0, debian:bullseye-slim) with different toolsets. Uses only bash
-# builtins (/dev/tcp) plus /proc/net/route (always present in a Linux
-# container) for the gateway lookup, and getent (glibc, present on all three)
-# for DNS -- no external binary required.
+# builtins (/dev/tcp) for the TCP probes, getent (glibc, present on all
+# three) for DNS, and `docker inspect` from the HOST (not a binary run
+# inside the container) for the gateway lookup -- in-container
+# /proc/net/route turned out to be unreliable across environments; see
+# exec_gateway_ip()'s own comment for the history.
 #
 # Exit codes -- fail-closed, ANY probe succeeding is a hard failure. When
 # multiple probe types fail across victims, exits with the MOST SEVERE
@@ -80,28 +82,33 @@ exec_dns_resolve() {
         "command -v getent >/dev/null 2>&1 && getent hosts '$domain'" 2>/dev/null
 }
 
-# Gateway IP from /proc/net/route (little-endian hex) -- pure bash arithmetic,
-# no ip/route binary needed. Parses the route table in THIS shell (`cat` is
-# reliably present in every image; `awk` is not -- an earlier version piped
-# through `awk` inside the container and came back empty on all three victims
-# in a real run, run 33298526519, because none of python:3.11-slim,
-# mysql:8.0, or debian:bullseye-slim ship it, and 2>/dev/null was hiding the
-# resulting "awk: not found"). Prints empty on failure.
+# Gateway IP via `docker inspect` from the HOST -- not from inside the
+# container. Two earlier approaches both failed in real CI runs:
+#   - piping /proc/net/route through awk inside the container (run
+#     33298526519): none of python:3.11-slim, mysql:8.0, or
+#     debian:bullseye-slim ship awk, and 2>/dev/null hid the resulting
+#     "awk: not found".
+#   - parsing /proc/net/route in this shell via `cat` instead (run
+#     33299296068): still empty -- a DEBUG dispatch (run 33299609171)
+#     showed the file exists and is world-readable but is genuinely
+#     0 bytes in this environment's kernel/procfs, not even a header
+#     line. In-container /proc/net/route is unreliable here.
+# Docker itself already tracks each container's per-network gateway in
+# its own metadata (NetworkSettings.Networks.<net>.Gateway) regardless of
+# what the container's own /proc exposes, so read it from there instead.
 exec_gateway_ip() {
     local victim="$1"
-    local route_table hex="" iface dest gw rest
-    route_table=$(docker compose exec -T "$victim" cat /proc/net/route 2>/dev/null)
-    # shellcheck disable=SC2034  # iface/rest are unpacked but unused
-    while IFS=$' \t' read -r iface dest gw rest; do
-        if [[ "$dest" == "00000000" ]]; then
-            hex="$gw"
-            break
-        fi
-    done <<< "$route_table"
-    if [[ ! "$hex" =~ ^[0-9A-Fa-f]{8}$ ]]; then
+    local container gw
+    container=$(docker compose ps -q "$victim" 2>/dev/null)
+    if [[ -z "$container" ]]; then
         return 1
     fi
-    printf '%d.%d.%d.%d' "0x${hex:6:2}" "0x${hex:4:2}" "0x${hex:2:2}" "0x${hex:0:2}"
+    gw=$(docker inspect "$container" \
+        --format '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}' 2>/dev/null)
+    if [[ -z "$gw" ]]; then
+        return 1
+    fi
+    printf '%s' "$gw"
 }
 
 for victim in "${VICTIMS[@]}"; do
