@@ -161,7 +161,7 @@ class Scorer:
         """
         if not self._sigma_rules:
             return []
-        query = (
+        query: dict[str, Any] = (
             {"term": {"observer.ingress.ip": ATTACKER_IP}}
             if ATTACKER_IP
             else {"bool": {"must_not": {"match_all": {}}}}
