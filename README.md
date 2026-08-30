@@ -24,6 +24,15 @@
 
 ---
 
+## Project Status & Backlog
+
+- **Wiki:** [Adversary-in-a-box Wiki](https://github.com/voltron-1/Adversary-in-a-box/wiki) — project overview, status, and links to every doc in this repo.
+- **Project board:** [Adversary-in-a-box Agile Project](https://github.com/users/voltron-1/projects/8) — sprint-by-sprint tracking of all milestones.
+- **Milestones M1–M12** (lab infrastructure, red/blue-team content, IR playbooks, PKI lab, forensic scoreboard, plus five post-release hardening/quality phases) are **complete**.
+- **In progress — milestone M13:** a 2026-08-13 full-repo security audit + purple-team gap analysis found 39 attacker technique/infrastructure findings against actual detection coverage (1 Covered / 14 Partial / 24 Blind). The resulting remediation backlog is **Phase G** — 32 open issues, planning-only until each phase gets an explicit go-ahead. See [`docs/20260813-remediation-plan.md`](docs/20260813-remediation-plan.md) for the technical detail and [`docs/IMPLEMENTATION_PLAN.md` → Phase G](docs/IMPLEMENTATION_PLAN.md#phase-g--security--measurement-remediation) for the tracking table.
+
+---
+
 ## Overview
 
 **Adversary-in-a-Box** is a self-contained, Docker-based cybersecurity lab that lets you practice both sides of the attack/defend cycle. The red team runs scripted MITRE ATT&CK campaigns against a realistic target environment; the blue team deploys IDS rules, SIEM correlation logic, and automated incident response playbooks. A shared forensic dashboard scores both teams and generates after-action reports.
@@ -433,15 +442,6 @@ docker compose down
 # Remove all containers, volumes, and networks
 docker compose down -v --remove-orphans
 ```
-
----
-
-## Contributing
-
-1. Fork the repo and create a feature branch: `git checkout -b feature/new-campaign`
-2. Add your campaign or detection rule with a corresponding test in `tests/`
-3. Map your addition to a SY0-701 objective in `docs/`
-4. Open a pull request with a description referencing the domain and ATT&CK technique
 
 ---
 
