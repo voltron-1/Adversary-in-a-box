@@ -14,7 +14,12 @@
 >   before the next tag.
 >
 > When a new audit lands, add findings to one of those files rather
-> than reopening sections below.
+> than reopening sections below. **Exception:** the 2026-08-13 audit's
+> findings are tracked as **Phase G** below, under milestone
+> [M13](https://github.com/voltron-1/Adversary-in-a-box/milestone/13) —
+> see that section for the tracking table and
+> [`docs/20260813-remediation-plan.md`](20260813-remediation-plan.md)
+> for the full technical detail.
 
 The original phase-by-phase backlog follows for reference. Most items
 are marked closed by virtue of v0.1.0 / v0.2.0 shipping; the sections
@@ -181,6 +186,69 @@ this plan** to keep scope honest:
 
 ---
 
+## Phase G — Security & Measurement Remediation
+
+> **Status:** planning-only — nothing in Phase G has landed yet. Each
+> item below is an open GitHub issue under milestone
+> [M13](https://github.com/voltron-1/Adversary-in-a-box/milestone/13),
+> tracked on the [project board](https://github.com/users/voltron-1/projects/8).
+> Full technical detail (the gap analysis behind each phase and the
+> phase-gating rationale) is in
+> [`docs/20260813-remediation-plan.md`](20260813-remediation-plan.md).
+> **This table is the single source of truth for what's in Phase G —
+> edit the linked issue when scope changes, and update the row here to
+> match rather than letting the two drift.**
+
+Source: a 2026-08-13 full-repo security audit + purple-team gap
+analysis, comparing 39 attacker technique/infrastructure findings
+against actual detection coverage (1 Covered / 14 Partial / 24
+Blind). Phase 0 confirms four runtime-environment assumptions before
+Phases 1/3/5 build on them — don't start those until G0.1 lands.
+
+| # | Item | Size | Issue |
+|---|---|---|---|
+| G0.1 | Runtime confirmation spike (gates Phases 1/3/5) | S | [#168](https://github.com/voltron-1/Adversary-in-a-box/issues/168) |
+| G1.1 | Prevent score forgery & index squatting (bind ES/Kibana/scoreboard/blue-team to loopback) | S | [#169](https://github.com/voltron-1/Adversary-in-a-box/issues/169) |
+| G1.2 | Restore dashboard & Zeek alert semantics (`event.dataset`, notice.log path match) | M | [#170](https://github.com/voltron-1/Adversary-in-a-box/issues/170) |
+| G1.3 | Provenance stamping + scorer integrity (reject forged syslog, drop anomalous events) | S | [#171](https://github.com/voltron-1/Adversary-in-a-box/issues/171) |
+| G1.4 | Scoreboard award audit trail logging | XS | [#172](https://github.com/voltron-1/Adversary-in-a-box/issues/172) |
+| G1.5 | Syslog ATT&CK tagging relaxation (scoped-out, low priority) | XS | [#173](https://github.com/voltron-1/Adversary-in-a-box/issues/173) |
+| G2.1 | Fix `compile_sigma.sh` identity check + retire non-functional Kibana import path | S | [#174](https://github.com/voltron-1/Adversary-in-a-box/issues/174) |
+| G2.2 | Delete stale compiled Sigma artifacts + CI content assertion | XS | [#175](https://github.com/voltron-1/Adversary-in-a-box/issues/175) |
+| G2.3 | Document `sigma_eval` as the authoritative Sigma consumer | XS | [#176](https://github.com/voltron-1/Adversary-in-a-box/issues/176) |
+| G3.1 | New containment compose-config test (structural egress guard, wired into CI) | S | [#177](https://github.com/voltron-1/Adversary-in-a-box/issues/177) |
+| G3.2 | New live containment probe script (`containment_test.sh`) | S | [#178](https://github.com/voltron-1/Adversary-in-a-box/issues/178) |
+| G3.3 | Harden `egress_test.sh` (resolver control probe, stop sourcing `.env` directly) | S | [#179](https://github.com/voltron-1/Adversary-in-a-box/issues/179) |
+| G3.4 | Durable `AIB_SKIP_PREFLIGHT` bypass artifact | XS | [#180](https://github.com/voltron-1/Adversary-in-a-box/issues/180) |
+| G3.5 | Suricata containment tripwire rule (alert if lab host reaches non-lab address) | XS | [#181](https://github.com/voltron-1/Adversary-in-a-box/issues/181) |
+| G3.6 | Red-team scope gate hardening (vet C2/SIEM env vars, require private `/24`) | M | [#182](https://github.com/voltron-1/Adversary-in-a-box/issues/182) |
+| G4.1 | Zeek `network_mode: host` + healthcheck (independent sensor tier) | S | [#183](https://github.com/voltron-1/Adversary-in-a-box/issues/183) |
+| G4.2 | Zeek script tuning (port-scan threshold, DNS-exfil entropy signal) | S | [#184](https://github.com/voltron-1/Adversary-in-a-box/issues/184) |
+| G4.3 | Symmetric restore step on `ransomware_ir.yml` + `data_exfil_ir.yml` | XS | [#185](https://github.com/voltron-1/Adversary-in-a-box/issues/185) |
+| G4.4 | Idempotent isolate/restore + fix asymmetric `\|\| true` bug | S | [#186](https://github.com/voltron-1/Adversary-in-a-box/issues/186) |
+| G4.5 | `$TARGET` validation (CWE-88 fix) + infra-service denylist | S | [#187](https://github.com/voltron-1/Adversary-in-a-box/issues/187) |
+| G4.6 | IR operator attribution (real `IR_OPERATOR`, not `${USER:-unknown}`) | XS | [#188](https://github.com/voltron-1/Adversary-in-a-box/issues/188) |
+| G4.7 | CI playbook-symmetry test (isolate implies restore) | XS | [#189](https://github.com/voltron-1/Adversary-in-a-box/issues/189) |
+| G5.1 | pcap-replay regression harness (build first, before G5.2–G5.5) | M | [#190](https://github.com/voltron-1/Adversary-in-a-box/issues/190) |
+| G5.2 | Gap L sensor config (checksum/HTTP_PORTS/double-decode) — gated on G0.1 | S | [#191](https://github.com/voltron-1/Adversary-in-a-box/issues/191) |
+| G5.3 | Gap I own-campaign matching rules | S | [#192](https://github.com/voltron-1/Adversary-in-a-box/issues/192) |
+| G5.4 | Gap J structurally-dead rule rewrites | S | [#193](https://github.com/voltron-1/Adversary-in-a-box/issues/193) |
+| G5.5 | Gap K FP/alert-storm cleanup | S | [#194](https://github.com/voltron-1/Adversary-in-a-box/issues/194) |
+| G6.1 | Gap D behavioural detection rules (T1110/T1557/T1048.003/T1041) | M | [#195](https://github.com/voltron-1/Adversary-in-a-box/issues/195) |
+| G6.2 | Gap M PKI ledger (`issue_cert.sh` reserved-basename guard, real `openssl ca` ledger) | M | [#196](https://github.com/voltron-1/Adversary-in-a-box/issues/196) |
+| G-INFRA.1 | Decision — host telemetry collector strategy (blocks G6.1's T1486/T1053.003) | XS | [#197](https://github.com/voltron-1/Adversary-in-a-box/issues/197) |
+| G-INFRA.2 | Decision — container stdout to ELK shipping | XS | [#198](https://github.com/voltron-1/Adversary-in-a-box/issues/198) |
+| G-INFRA.3 | Document ES audit-log absence as by-design | XS | [#199](https://github.com/voltron-1/Adversary-in-a-box/issues/199) |
+
+Sequencing: **G0.1 first** (de-risks everything downstream), then
+**G1.x** (the scoring/measurement trust chain — highest leverage,
+lowest cost), then **G3.x** (containment — the one category whose
+failure mode is packets leaving the lab), then **G2/G4/G5/G6** in any
+order as capacity allows, with **G5.1 before G5.2–G5.5** and
+**G-INFRA.1 before G6.1**.
+
+---
+
 ## Maintenance notes
 
 - This file is the source of truth for "what's left." When an item is
@@ -190,3 +258,9 @@ this plan** to keep scope honest:
   rolling backlog.
 - When a new audit lands, add findings to the appropriate phase rather
   than creating yet another `IMPLEMENTATION_PLAN_v2.md`.
+- **Phase G is the exception**: its rolling state lives in the 32
+  linked GitHub issues (milestone M13) and the project board, not in
+  this table's prose. Keep this table's rows (item, size, issue link)
+  in sync with issue titles/numbers if issues are added, split, or
+  closed, but don't duplicate acceptance criteria or rationale here —
+  that lives on the issue and in the remediation plan doc.
