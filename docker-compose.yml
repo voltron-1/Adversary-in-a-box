@@ -246,18 +246,22 @@ services:
   # ZEEK NSM -- network security monitor (Phase B2a)
   #
   # Closes pre-existing issue #13: the detection scripts under
-  # blue-team/detection/zeek/ existed but had no runtime. Zeek sits on
-  # lab-net and writes JSON logs to a shared named volume that Logstash
-  # ingests. entrypoint.sh templates Site::local_nets from LAB_NET_PREFIX
-  # so per-student isolation flows through (Zeek has no env-var
-  # substitution at the .zeek-file level).
+  # blue-team/detection/zeek/ existed but had no runtime. entrypoint.sh
+  # templates Site::local_nets from LAB_NET_PREFIX so per-student isolation
+  # flows through (Zeek has no env-var substitution at the .zeek-file level),
+  # then writes JSON logs to a shared named volume that Logstash ingests.
+  #
+  # G4.1 (Gap E): moved to network_mode: host, same as suricata below --
+  # Zeek attached to lab-net as a regular container only ever saw its own
+  # veth, making a Suricata blind spot (e.g. host-gateway INPUT traffic)
+  # also a Zeek blind spot, with no independent second sensor. entrypoint.sh
+  # auto-detects the lab bridge the same way suricata's entrypoint does,
+  # so both sensors watch the same wire.
   # ---------------------------------------------------------------------------
   zeek:
     image: zeek/zeek:7.0
     hostname: zeek
-    networks:
-      lab-net:
-        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.53
+    network_mode: "host"
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -266,8 +270,19 @@ services:
       - zeek-logs:/var/log/zeek
     environment:
       - LAB_NET_PREFIX=${LAB_NET_PREFIX:-172.20.0}
-      - ZEEK_IFACE=eth0
+      # Explicit override only -- entrypoint.sh auto-detects the lab bridge
+      # first (mirroring suricata) and falls back to this if that fails.
+      # Left unset here so auto-detect runs by default.
     entrypoint: ["/bin/sh", "/usr/local/zeek/share/zeek/site/entrypoint.sh"]
+    healthcheck:
+      # G4.1: distinguishes "no traffic yet" (not a failure -- "no attacks"
+      # isn't "no visibility") from "sensor not capturing despite traffic on
+      # the wire" (a real failure). See healthcheck.sh for the logic.
+      test: ["CMD-SHELL", "/usr/local/zeek/share/zeek/site/healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------

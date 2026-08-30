@@ -26,6 +26,9 @@ class PlaybookEngine:
         self.playbook = self._load_playbook(playbook_name)
         self.execution_log: list[dict] = []
         self.start_time = datetime.now(UTC)
+        # G4.6: attributed to run_script's IR_OPERATOR env var; set for real
+        # by execute() before any step runs.
+        self.operator = "unknown"
 
     def _load_playbook(self, name: str) -> dict:
         path = PLAYBOOK_DIR / f"{name}.yml"
@@ -35,9 +38,12 @@ class PlaybookEngine:
             data: dict = yaml.safe_load(f)
             return data
 
-    def execute(self, context: dict | None = None) -> dict:
-        """Execute all steps in the playbook."""
+    def execute(self, context: dict | None = None, operator: str = "unknown") -> dict:
+        """Execute all steps in the playbook, attributing run_script actions
+        (isolate_host.sh/restore_host.sh's evidence log) to `operator` via
+        the IR_OPERATOR env var (G4.6)."""
         context = context or {}
+        self.operator = operator or "unknown"
         results = []
 
         print(f"\n[IR] Executing playbook: {self.playbook['name']}")
@@ -59,6 +65,7 @@ class PlaybookEngine:
             "steps_completed": sum(1 for r in results if r["success"]),
             "results": results,
             "context": context,
+            "operator": self.operator,
         }
 
         # Save execution log to evidence
@@ -139,7 +146,9 @@ class PlaybookEngine:
         # Substitute context variables
         args = [a.format(**context) for a in args]
         cmd = ["bash", str(script)] + args
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        env = os.environ.copy()
+        env["IR_OPERATOR"] = self.operator
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
         return {
             "success": proc.returncode == 0,
             "output": proc.stdout.strip() or proc.stderr.strip(),

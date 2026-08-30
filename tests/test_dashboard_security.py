@@ -417,5 +417,50 @@ class TestPlaybookContextValidation(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
 
+class TestOperatorAttribution(unittest.TestCase):
+    """G4.6: IR event logs were unattributable ($USER is always unset in
+    containers). The dashboard now validates an operator-supplied `operator`
+    field and threads it through to isolate_host.sh/restore_host.sh's
+    IR_OPERATOR env var, using the same charset guard as context host/id
+    values since it is interpolated into the isolation_log.json evidence
+    entry."""
+
+    def _module(self):
+        return _load("blue_dash_app", BLUE_APP, {"SECRET_KEY": STRONG_KEY})
+
+    def _client(self):
+        env = {"SECRET_KEY": STRONG_KEY, "PLAYBOOK_AUTH_TOKEN": "s3cret-token"}
+        return _load("blue_dash_app", BLUE_APP, env).app.test_client()
+
+    def test_none_operator_becomes_unknown(self):
+        mod = self._module()
+        self.assertEqual(mod._validate_operator(None), "unknown")
+
+    def test_non_string_operator_raises(self):
+        mod = self._module()
+        for bad in (123, ["list"], {"a": 1}, True):
+            with self.assertRaises(ValueError):
+                mod._validate_operator(bad)
+
+    def test_injection_chars_in_operator_raises(self):
+        mod = self._module()
+        for payload in ('alice"; rm -rf /', "a b", "{evil}", "$(id)", "a|b"):
+            with self.assertRaises(ValueError):
+                mod._validate_operator(payload)
+
+    def test_valid_operator_passes_through(self):
+        mod = self._module()
+        self.assertEqual(mod._validate_operator("alice"), "alice")
+
+    def test_route_rejects_injection_operator(self):
+        client = self._client()
+        resp = client.post(
+            "/api/run-playbook",
+            json={"playbook_id": "phishing_ir", "operator": 'alice"; reboot'},
+            headers={"X-Auth-Token": "s3cret-token"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()
