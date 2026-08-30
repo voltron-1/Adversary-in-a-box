@@ -95,6 +95,13 @@ class StartScriptHarness:
             tmpdir / "scripts" / "safety" / "egress_test.sh",
             "#!/usr/bin/env bash\nexit 0\n",
         )
+        # G3.2: start.sh now runs this after every services-healthy poll.
+        # Stub it the same way as egress_test.sh above -- these tests exercise
+        # the poll loop against a fake `docker`, not live containment.
+        _make_stub(
+            tmpdir / "scripts" / "safety" / "containment_test.sh",
+            "#!/usr/bin/env bash\nexit 0\n",
+        )
 
     def run(self, *args: str, **env_overrides: str) -> subprocess.CompletedProcess:
         # Patch the DEADLINE to be 8 seconds from now so the timeout
@@ -162,6 +169,28 @@ class TestStartScript(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 0, debug)
+        self.assertIn("[start] all services healthy.", result.stdout, debug)
+
+    def test_propagates_containment_test_failure(self) -> None:
+        # G3.2: a live containment breach must fail start.sh itself, not
+        # just get logged -- confirms the exit $? wiring after the probe.
+        ps = _ps_blob(
+            [
+                {"Service": "elasticsearch", "State": "running", "Health": "healthy"},
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            h = StartScriptHarness(Path(tmp), [ps])
+            _make_stub(
+                Path(tmp) / "scripts" / "safety" / "containment_test.sh",
+                "#!/usr/bin/env bash\necho '[containment] FAIL (stub)' >&2\nexit 3\n",
+            )
+            result = h.run()
+            debug = (
+                f"\nrc:{result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}\n"
+            )
+
+        self.assertEqual(result.returncode, 3, debug)
         self.assertIn("[start] all services healthy.", result.stdout, debug)
 
     def test_exits_1_when_service_exits(self) -> None:
