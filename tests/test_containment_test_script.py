@@ -3,10 +3,11 @@ tests/test_containment_test_script.py -- Phase G3.2
 
 Exercise scripts/safety/containment_test.sh's probe logic and exit-code
 semantics without a live Docker daemon, mirroring test_start_script.py's
-stub-docker-on-PATH approach. The stub inspects each `docker compose exec -T
-<victim> <cmd>` invocation's command string to decide which of the three
-probes it represents (TCP connect via /dev/tcp, DNS via getent, gateway via
-/proc/net/route) and returns a scripted outcome for it.
+stub-docker-on-PATH approach. The stub inspects each `docker` invocation's
+command string to decide which of the three probes it represents (TCP
+connect via /dev/tcp inside the container, DNS via getent inside the
+container, gateway via `docker inspect` run on the HOST) and returns a
+scripted outcome for it.
 """
 
 from __future__ import annotations
@@ -71,12 +72,16 @@ class ContainmentTestHarness:
                     fi
                     exit 2
                 fi
-                if [[ "$args" == *"cat /proc/net/route"* ]]; then
-                    # Real /proc/net/route is tab-separated with a header row;
-                    # the script must skip the header and find the Destination
-                    # 00000000 row itself (little-endian hex for 192.0.2.1).
-                    printf 'Iface\tDestination\tGateway\tFlags\n'
-                    printf 'eth0\t00000000\t010200C0\t0003\n'
+                if [[ "$args" == "compose ps -q "* ]]; then
+                    echo "fake-container-id"
+                    exit 0
+                fi
+                if [[ "$args" == "inspect fake-container-id --format "* ]]; then
+                    # Gateway lookup now goes through `docker inspect` on the
+                    # HOST -- in-container /proc/net/route turned out to be
+                    # unreliable (0 bytes on some kernels/environments; see
+                    # exec_gateway_ip()'s comment).
+                    echo "192.0.2.1"
                     exit 0
                 fi
                 if [[ "$args" == *"/dev/tcp/192.0.2.1/"* ]]; then
@@ -149,11 +154,13 @@ class TestContainmentTestScript(unittest.TestCase):
         self.assertIn("is not running or not exec-able", result.stdout)
 
     def test_exits_4_when_gateway_undetectable(self) -> None:
-        # Regression test for run 33298526519: an earlier version piped
-        # /proc/net/route through `awk` INSIDE the container. python:3.11-slim,
-        # mysql:8.0, and debian:bullseye-slim all lack awk, so the pipe came
-        # back empty (stderr was hidden by 2>/dev/null) on every real victim --
-        # this simulates that empty result directly, regardless of cause.
+        # Regression test: two earlier versions both came back empty on real
+        # victims -- piping /proc/net/route through `awk` inside the
+        # container (run 33298526519, awk missing from all three base
+        # images) and then parsing /proc/net/route with `cat` instead (run
+        # 33299296068, the file was genuinely 0 bytes on that kernel). This
+        # simulates `docker inspect` itself reporting no gateway, regardless
+        # of cause.
         with tempfile.TemporaryDirectory() as tmp:
             h = ContainmentTestHarness(Path(tmp))
             _make_stub(
@@ -167,8 +174,12 @@ class TestContainmentTestScript(unittest.TestCase):
                     if [[ "$args" == *"getent"* ]]; then
                         exit 2
                     fi
-                    if [[ "$args" == *"cat /proc/net/route"* ]]; then
-                        exit 0  # empty stdout, e.g. a missing tool inside the container
+                    if [[ "$args" == "compose ps -q "* ]]; then
+                        echo "fake-container-id"
+                        exit 0
+                    fi
+                    if [[ "$args" == "inspect fake-container-id --format "* ]]; then
+                        exit 0  # empty stdout -- no Gateway on this network
                     fi
                     if [[ "$args" == *"/dev/tcp/"* ]]; then
                         exit 1
