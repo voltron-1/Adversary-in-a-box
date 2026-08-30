@@ -193,6 +193,31 @@ class TestStartScript(unittest.TestCase):
         self.assertEqual(result.returncode, 3, debug)
         self.assertIn("[start] all services healthy.", result.stdout, debug)
 
+    def test_containment_inconclusive_warns_but_does_not_fail_start(self) -> None:
+        # G0.1 (#168): exit code 4 means the probe couldn't determine a
+        # victim's gateway -- inconclusive, not a security violation. This
+        # fires reliably in some real environments (see
+        # findings/20260813-runtime-confirmation.md) even with the lab
+        # correctly isolated, so it must not block every real lab startup.
+        ps = _ps_blob(
+            [
+                {"Service": "elasticsearch", "State": "running", "Health": "healthy"},
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            h = StartScriptHarness(Path(tmp), [ps])
+            _make_stub(
+                Path(tmp) / "scripts" / "safety" / "containment_test.sh",
+                "#!/usr/bin/env bash\necho '[containment] FAIL (stub)' >&2\nexit 4\n",
+            )
+            result = h.run()
+            debug = (
+                f"\nrc:{result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}\n"
+            )
+
+        self.assertEqual(result.returncode, 0, debug)
+        self.assertIn("WARNING: containment probe was inconclusive", result.stderr, debug)
+
     def test_exits_1_when_service_exits(self) -> None:
         # First poll: kibana exited -> immediate exit 1.
         ps = _ps_blob(
