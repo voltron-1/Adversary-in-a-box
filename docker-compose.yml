@@ -465,6 +465,9 @@ services:
       # unset/default disables the endpoint (fail closed); the read-only
       # scoreboard still serves. Set a unique value in .env to enable awards.
       - SCOREBOARD_AUTH_TOKEN=${SCOREBOARD_AUTH_TOKEN:-}
+      # G1.4: matches red-team/blue-team's LOG_LEVEL convention so the award
+      # audit-trail log (#143) actually reaches container logs.
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - elasticsearch
     restart: unless-stopped
