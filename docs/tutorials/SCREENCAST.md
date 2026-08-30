@@ -73,7 +73,7 @@ docker compose exec red-team python runner.py --list
 > the whole thing."
 
 ```bash
-docker compose exec red-team python runner.py --campaign full-killchain
+docker compose exec red-team python runner.py --campaign full-killchain --force
 ```
 
 > "Behind the scenes: simulated spearphish to victim-mail, OWASP-Top-10

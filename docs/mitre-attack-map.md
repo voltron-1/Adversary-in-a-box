@@ -90,7 +90,8 @@ Maintain access across reboots and credential changes.
 docker compose exec red-team python runner.py --technique T1566.001
 
 # Run the full kill chain (all techniques in sequence)
-docker compose exec red-team python runner.py --campaign full-killchain
+# --force required (P10) -- full-killchain is destructive and refuses to run without it.
+docker compose exec red-team python runner.py --campaign full-killchain --force
 ```
 
 ---

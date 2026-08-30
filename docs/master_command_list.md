@@ -91,7 +91,7 @@ campaigns are at the bottom.
 | Lateral (SSH hijack) | T1563.001 | `docker compose exec red-team python runner.py --campaign lateral-ssh`   |
 | Persistence      | T1053.003, T1098.004 | `docker compose exec red-team python runner.py --campaign persistence` |
 | Exfiltration     | T1048.003, T1041 | `docker compose exec red-team python runner.py --campaign exfil`     |
-| Full kill chain  | (all)        | `docker compose exec red-team python runner.py --campaign full-killchain` |
+| Full kill chain  | (all)        | `docker compose exec red-team python runner.py --campaign full-killchain --force` |
 | **MITM** (Phase B1a) | T1557 | `docker compose exec red-team python runner.py --campaign mitm` |
 | **Brute force** (B1b) | T1110 | `docker compose exec red-team python runner.py --campaign brute-force` |
 | **Malware drop** (B1c) | T1204 | `docker compose exec red-team python runner.py --campaign malware-drop` |
