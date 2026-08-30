@@ -62,6 +62,15 @@ jobs:
         # G3a CA-bootstrap check below). Rewrite the line deterministically --
         # start.sh sources .env, so this must live in .env, not the job env.
         sed -i 's/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=ir,pki/' .env
+        # d889e40 (2026-06-23) made the dashboards refuse to boot on the
+        # committed .env.example placeholder secrets -- this step never
+        # regenerated them, so every dispatch since has blue-team (and, once
+        # #143 shipped, the scoreboard's award endpoint) crash-loop on the
+        # exact denylisted default. Mirror scripts/lab/student-env.sh's
+        # per-student secret generation here.
+        for var in FLASK_SECRET_KEY PLAYBOOK_AUTH_TOKEN SCOREBOARD_AUTH_TOKEN; do
+          sed -i "s/^${var}=.*/${var}=$(openssl rand -hex 32)/" .env
+        done
         # The runner is on the public internet -- the preflight would
         # refuse to start. Air-gap is enforced via lab-net internal:true
         # at the network layer, which still applies.
