@@ -193,6 +193,31 @@ class TestStartScript(unittest.TestCase):
         self.assertEqual(result.returncode, 3, debug)
         self.assertIn("[start] all services healthy.", result.stdout, debug)
 
+    def test_containment_inconclusive_warns_but_does_not_fail_start(self) -> None:
+        # G0.1 (#168): exit code 4 means the probe couldn't determine a
+        # victim's gateway -- inconclusive, not a security violation. This
+        # fires reliably in some real environments (see
+        # findings/20260813-runtime-confirmation.md) even with the lab
+        # correctly isolated, so it must not block every real lab startup.
+        ps = _ps_blob(
+            [
+                {"Service": "elasticsearch", "State": "running", "Health": "healthy"},
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            h = StartScriptHarness(Path(tmp), [ps])
+            _make_stub(
+                Path(tmp) / "scripts" / "safety" / "containment_test.sh",
+                "#!/usr/bin/env bash\necho '[containment] FAIL (stub)' >&2\nexit 4\n",
+            )
+            result = h.run()
+            debug = (
+                f"\nrc:{result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}\n"
+            )
+
+        self.assertEqual(result.returncode, 0, debug)
+        self.assertIn("WARNING: containment probe was inconclusive", result.stderr, debug)
+
     def test_exits_1_when_service_exits(self) -> None:
         # First poll: kibana exited -> immediate exit 1.
         ps = _ps_blob(
@@ -264,6 +289,9 @@ class TestStartScript(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2, debug)
         self.assertIn("preflight missing", result.stderr, debug)
+        # G3.4: don't surface the bypass as "the fix" for a routine
+        # permissions error -- that invites reaching for it by habit.
+        self.assertNotIn("AIB_SKIP_PREFLIGHT", result.stderr, debug)
 
     def test_skip_preflight_env_honored(self) -> None:
         # With AIB_SKIP_PREFLIGHT=1 + preflight deleted, script still
@@ -273,9 +301,21 @@ class TestStartScript(unittest.TestCase):
             h = StartScriptHarness(Path(tmp), [ps])
             (Path(tmp) / "scripts" / "safety" / "egress_test.sh").unlink()
             result = h.run()  # AIB_SKIP_PREFLIGHT=1 by default
+            audit_log = Path(tmp) / "logs" / "preflight-bypass-audit.log"
+            debug = f"\nrc:{result.returncode}\nstderr:\n{result.stderr}\n"
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("AIB_SKIP_PREFLIGHT=1", result.stderr)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("AIB_SKIP_PREFLIGHT=1", result.stderr)
+            # G3.4: durable audit record for bypass usage, written outside
+            # evidence/ and reports/ specifically because reset.sh wipes both.
+            self.assertTrue(
+                audit_log.exists(), f"expected a bypass audit log at {audit_log}{debug}"
+            )
+            self.assertRegex(
+                audit_log.read_text(),
+                r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z host=\S+ user=\S+ cwd=\S+",
+                debug,
+            )
 
     def test_extra_args_forward_to_compose_up(self) -> None:
         ps = _ps_blob([{"Service": "es", "State": "running", "Health": "healthy"}])

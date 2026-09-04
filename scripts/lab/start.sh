@@ -31,14 +31,28 @@ fi
 
 if [[ -z "${AIB_SKIP_PREFLIGHT:-}" ]]; then
     if [[ ! -x "$PREFLIGHT" ]]; then
+        # G3.4: no mention of AIB_SKIP_PREFLIGHT here -- surfacing the bypass
+        # as the fix for a routine permissions error invites reaching for it
+        # by habit. `chmod +x` is the actual fix; the escape hatch stays
+        # documented only in this script's own header and docs/THREAT_MODEL.md.
         echo "[ERROR] preflight missing or not executable: $PREFLIGHT" >&2
-        echo "        Run 'chmod +x $PREFLIGHT' or set AIB_SKIP_PREFLIGHT=1." >&2
+        echo "        Run 'chmod +x $PREFLIGHT'." >&2
         exit 2
     fi
     echo "[start] running air-gap preflight (scripts/safety/egress_test.sh --strict)..."
     "$PREFLIGHT" --strict
 else
     echo "[start] AIB_SKIP_PREFLIGHT=1 — skipping air-gap preflight (NOT RECOMMENDED)" >&2
+    # G3.4: a durable audit trail for bypass usage. Lives in logs/, not
+    # evidence/ or reports/, specifically because scripts/lab/reset.sh wipes
+    # both of those -- this record must survive a mid-class reset so an
+    # instructor auditing "was the air-gap check ever skipped" afterward
+    # still has an answer.
+    mkdir -p "${ROOT_DIR}/logs"
+    printf '%s host=%s user=%s cwd=%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(hostname 2>/dev/null || echo unknown)" \
+        "${USER:-unknown}" "$PWD" \
+        >> "${ROOT_DIR}/logs/preflight-bypass-audit.log"
 fi
 
 echo "[start] preflight clean; bringing the lab up..."
@@ -126,8 +140,26 @@ for it in items:
         # startup so a host-level regression (e.g. a misconfigured Docker
         # network driver) is caught immediately, not just in CI.
         echo "[start] running live containment probe (scripts/safety/containment_test.sh)..."
-        bash "${ROOT_DIR}/scripts/safety/containment_test.sh"
-        exit $?
+        containment_rc=0
+        bash "${ROOT_DIR}/scripts/safety/containment_test.sh" || containment_rc=$?
+        # Exit code 4 means the probe was INCONCLUSIVE (e.g. a victim's
+        # default gateway couldn't be determined), not that containment
+        # failed -- codes 1-3 are actual security violations (an external
+        # probe or the host gateway was reachable) and must still hard-fail.
+        # Root-caused during G0.1 (#168): this fires reliably in some
+        # environments even with the lab correctly isolated -- see #215/#216
+        # for the two attempted fixes and findings/20260813-runtime-confirmation.md
+        # for the open question. Don't block every real lab startup on an
+        # unresolved detection gap; warn instead and let the STATIC config
+        # check (tests/test_compose_containment.py, G3.1) and lab-net's own
+        # internal:true flag continue to provide the actual guarantee.
+        if (( containment_rc == 4 )); then
+            echo "[start] WARNING: containment probe was inconclusive (could not verify the live air-gap for all victims) -- see findings/20260813-runtime-confirmation.md. Lab is starting anyway; static containment checks still apply." >&2
+        elif (( containment_rc != 0 )); then
+            echo "[start] containment probe FAILED (exit ${containment_rc}) -- see output above." >&2
+            exit "$containment_rc"
+        fi
+        exit 0
     fi
 
     if (( $(date +%s) > DEADLINE )); then

@@ -31,6 +31,13 @@ SIGMA_RULES_DIR = os.environ.get("SIGMA_RULES_DIR", "/app/sigma")
 # docker-compose.yml). Used to reject syslog-* docs forged by any other
 # lab-net peer before they can be counted as a Sigma detection.
 ATTACKER_IP = os.environ.get("ATTACKER_IP", "")
+# #233: the falco service's lab-net address (matches docker-compose.yml's
+# falco service -- see siem/logstash/pipelines/syslog.conf's own comment).
+# Falco alerts arrive over the same open UDP syslog port ATTACKER_IP
+# gates above, so they need the same forgery guard: a lab-net peer other
+# than the real falco container could send a spoofed "falco: {...}"
+# datagram claiming a detection that never happened.
+FALCO_HOST_IP = os.environ.get("FALCO_HOST_IP", "")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -140,7 +147,15 @@ class Scorer:
         # produce scored detections instead of always Missing. These timestamps
         # flow through the same window-correlation + false-positive logic as the
         # Suricata alerts.
-        alert_ts = sorted(alert_ts + self._sigma_detection_ts())
+        alert_ts = alert_ts + self._sigma_detection_ts()
+        # G6.1: Zeek has been generating real behavioral NOTICEs (port scans,
+        # DNS-tunnel entropy, lateral movement, ARP spoofing, exfil volume)
+        # since Phase 4, but nothing ever counted them -- the entire Zeek
+        # investment contributed zero to MTTD scoring. Notices come from Zeek
+        # actually parsing observed packets, the same trust level as a
+        # Suricata alert (not a self-reported syslog marker), so they're
+        # counted directly here rather than gated through ATTACKER_IP/Sigma.
+        alert_ts = sorted(alert_ts + self._zeek_notice_ts() + self._falco_ts())
         return starts, ends, alert_ts, responses
 
     def _sigma_detection_ts(self) -> list[float]:
@@ -173,6 +188,62 @@ class Scorer:
                 ts = _parse_ts(doc.get("@timestamp"))
                 if ts is not None:
                     out.append(ts)
+        return out
+
+    def _zeek_notice_ts(self) -> list[float]:
+        """G6.1: timestamps of zeek-* docs that are Zeek notice.log entries.
+
+        zeek-* mixes every Zeek log Logstash ingests (conn.log, dns.log,
+        http.log, notice.log, ssh.log, ssl.log) into one index (see
+        siem/logstash/pipelines/zeek.conf). `note` is populated only on a
+        notice.log entry (it's the Zeek notice-type name, e.g.
+        "DnsExfil::High_Entropy_Subdomain"), so filtering on its presence
+        selects exactly the NOTICE events Zeek's detection scripts fired --
+        real behavioral detections, not raw connection/protocol telemetry.
+
+        Unlike _sigma_detection_ts, this isn't gated on ATTACKER_IP: a
+        notice comes from Zeek's own protocol analyzers parsing real
+        observed packets, the same trust level as a Suricata alert (which
+        also isn't gated) -- not a self-reported syslog datagram any
+        lab-net peer could forge.
+        """
+        out: list[float] = []
+        for doc in self._hits("zeek-*", {"exists": {"field": "note"}}):
+            ts = _parse_ts(doc.get("@timestamp"))
+            if ts is not None:
+                out.append(ts)
+        return out
+
+    def _falco_ts(self) -> list[float]:
+        """#233: timestamps of syslog-* docs carrying a real Falco alert.
+
+        Falco (docker-compose.yml's falco service) delivers real,
+        kernel-observed syscall telemetry -- the same trust tier as a
+        Suricata alert or Zeek notice -- but over the syslog.conf UDP
+        listener, the exact same open port a self-reported campaign
+        advisory (or a forged datagram from any other lab-net peer) also
+        uses. Unlike _zeek_notice_ts (Zeek's own log files, not a network
+        listener anyone can write to), this needs the same forgery guard
+        _sigma_detection_ts uses for ATTACKER_IP: only trust docs whose
+        provenance-stamped ingress IP matches the real falco container. If
+        FALCO_HOST_IP isn't configured, fail closed (query nothing) rather
+        than trust every peer.
+        """
+        if not FALCO_HOST_IP:
+            return []
+        query = {
+            "bool": {
+                "must": [
+                    {"term": {"observer.ingress.ip": FALCO_HOST_IP}},
+                    {"term": {"tags": "falco_alert"}},
+                ]
+            }
+        }
+        out: list[float] = []
+        for doc in self._hits("syslog-*", query):
+            ts = _parse_ts(doc.get("@timestamp"))
+            if ts is not None:
+                out.append(ts)
         return out
 
     @staticmethod

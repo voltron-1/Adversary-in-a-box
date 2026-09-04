@@ -185,5 +185,231 @@ class TestG13ProvenanceIntegrity(unittest.TestCase):
         self.assertEqual(scorer._sigma_detection_ts(), [])
 
 
+class TestG61ZeekNoticeScoring(unittest.TestCase):
+    """G6.1: Zeek notice.log entries (real behavioral detections) must count
+    toward MTTD scoring, the same trust level as a Suricata alert -- not
+    gated behind ATTACKER_IP/Sigma the way a self-reported syslog marker is,
+    since a notice comes from Zeek parsing real observed packets."""
+
+    def _fresh_scorer(self):
+        if "scorer" in sys.modules:
+            del sys.modules["scorer"]
+        import scorer  # noqa: F401
+
+        return sys.modules["scorer"]
+
+    def test_queries_zeek_index_for_docs_with_a_note_field(self):
+        s = self._fresh_scorer()
+        seen = []
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                seen.append((index, body.get("query")))
+                return default
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        scorer._zeek_notice_ts()
+        self.assertEqual(seen, [("zeek-*", {"exists": {"field": "note"}})])
+
+    def test_extracts_timestamps_from_matching_docs(self):
+        s = self._fresh_scorer()
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                return {
+                    "hits": {
+                        "hits": [
+                            {
+                                "_source": {
+                                    "note": "DnsExfil::High_Entropy_Subdomain",
+                                    "@timestamp": "2026-05-31T10:00:00+00:00",
+                                }
+                            },
+                        ]
+                    }
+                }
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        self.assertEqual(len(scorer._zeek_notice_ts()), 1)
+
+    def test_not_gated_on_attacker_ip(self):
+        # Unlike _sigma_detection_ts, a missing/unset ATTACKER_IP must not
+        # suppress zeek notice scoring -- notices aren't forgeable the way a
+        # raw syslog datagram is.
+        os.environ.pop("ATTACKER_IP", None)
+        s = self._fresh_scorer()
+        self.assertEqual(s.ATTACKER_IP, "")
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                return {
+                    "hits": {
+                        "hits": [
+                            {
+                                "_source": {
+                                    "note": "ArpSpoof::Duplicate_IP_MAC_Binding",
+                                    "@timestamp": "2026-05-31T10:00:00+00:00",
+                                }
+                            },
+                        ]
+                    }
+                }
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        self.assertEqual(len(scorer._zeek_notice_ts()), 1)
+
+    def test_fetch_merges_suricata_sigma_and_zeek_detections(self):
+        # The whole point of G6.1: a Zeek-only detection must show up in the
+        # same alert_ts list a Suricata alert would, not a separate,
+        # uncounted stream.
+        s = self._fresh_scorer()
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                if index == "suricata-*":
+                    return {
+                        "hits": {
+                            "hits": [
+                                {"_source": {"@timestamp": "2026-05-31T10:00:00+00:00"}},
+                            ]
+                        }
+                    }
+                if index == "zeek-*":
+                    return {
+                        "hits": {
+                            "hits": [
+                                {
+                                    "_source": {
+                                        "note": "ExfilVolume::High_Outbound_Volume",
+                                        "@timestamp": "2026-05-31T10:05:00+00:00",
+                                    }
+                                },
+                            ]
+                        }
+                    }
+                return default
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        _starts, _ends, alert_ts, _responses = scorer._fetch()
+        self.assertEqual(len(alert_ts), 2)
+
+
+class TestG233FalcoScoring(unittest.TestCase):
+    """#233: real Falco alerts (kernel-observed syscall telemetry) must
+    count toward MTTD scoring, the same trust tier as a Suricata alert or
+    Zeek notice -- but unlike Zeek (its own log files, not a network
+    listener), Falco delivers over the same open UDP syslog port a
+    self-reported campaign advisory uses, so it needs the same
+    FALCO_HOST_IP forgery guard _sigma_detection_ts uses for ATTACKER_IP."""
+
+    def setUp(self):
+        os.environ.pop("FALCO_HOST_IP", None)
+
+    def _fresh_scorer(self):
+        if "scorer" in sys.modules:
+            del sys.modules["scorer"]
+        import scorer  # noqa: F401
+
+        return sys.modules["scorer"]
+
+    def test_fails_closed_when_falco_host_ip_unset(self):
+        s = self._fresh_scorer()
+        self.assertEqual(s.FALCO_HOST_IP, "")
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                raise AssertionError("must not query ES when FALCO_HOST_IP is unset")
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        self.assertEqual(scorer._falco_ts(), [])
+
+    def test_queries_syslog_index_gated_on_falco_host_ip_and_tag(self):
+        os.environ["FALCO_HOST_IP"] = "172.20.0.80"
+        s = self._fresh_scorer()
+        seen = []
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                seen.append((index, body.get("query")))
+                return default
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        scorer._falco_ts()
+        self.assertEqual(
+            seen,
+            [
+                (
+                    "syslog-*",
+                    {
+                        "bool": {
+                            "must": [
+                                {"term": {"observer.ingress.ip": "172.20.0.80"}},
+                                {"term": {"tags": "falco_alert"}},
+                            ]
+                        }
+                    },
+                )
+            ],
+        )
+
+    def test_extracts_timestamps_from_matching_docs(self):
+        os.environ["FALCO_HOST_IP"] = "172.20.0.80"
+        s = self._fresh_scorer()
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                return {
+                    "hits": {
+                        "hits": [
+                            {
+                                "_source": {
+                                    "falco": {"rule": "Lab Cron Persistence Write"},
+                                    "@timestamp": "2026-05-31T10:00:00+00:00",
+                                }
+                            },
+                        ]
+                    }
+                }
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        self.assertEqual(len(scorer._falco_ts()), 1)
+
+    def test_fetch_merges_falco_detections(self):
+        # Mirrors TestG61ZeekNoticeScoring.test_fetch_merges_...: a
+        # Falco-only detection must show up in the same alert_ts list a
+        # Suricata alert would, not a separate, uncounted stream.
+        os.environ["FALCO_HOST_IP"] = "172.20.0.80"
+        s = self._fresh_scorer()
+
+        class _Fake(s.Scorer):
+            def _es_search(self, index, body, default):
+                if index == "suricata-*":
+                    return {
+                        "hits": {
+                            "hits": [
+                                {"_source": {"@timestamp": "2026-05-31T10:00:00+00:00"}},
+                            ]
+                        }
+                    }
+                if index == "syslog-*":
+                    return {
+                        "hits": {
+                            "hits": [
+                                {
+                                    "_source": {
+                                        "falco": {"rule": "Lab SUID Bit Set"},
+                                        "@timestamp": "2026-05-31T10:05:00+00:00",
+                                    }
+                                },
+                            ]
+                        }
+                    }
+                return default
+
+        scorer = _Fake(es_url="http://fake-es:9200")
+        _starts, _ends, alert_ts, _responses = scorer._fetch()
+        self.assertEqual(len(alert_ts), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

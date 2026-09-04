@@ -78,6 +78,40 @@ class TestPlaybookEngine(unittest.TestCase):
             self.assertIn("name", step, f"Step missing 'name': {step}")
             self.assertIn("action", step, f"Step missing 'action': {step}")
 
+    def test_execute_defaults_operator_to_unknown(self):
+        engine = self._make_engine("phishing_ir")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            import response.playbook_engine as pe
+
+            original = pe.EVIDENCE_DIR
+            pe.EVIDENCE_DIR = Path(tmpdir)
+            summary = engine.execute({})
+            pe.EVIDENCE_DIR = original
+        self.assertEqual(summary["operator"], "unknown")
+
+    def test_execute_threads_operator_into_summary(self):
+        engine = self._make_engine("phishing_ir")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            import response.playbook_engine as pe
+
+            original = pe.EVIDENCE_DIR
+            pe.EVIDENCE_DIR = Path(tmpdir)
+            summary = engine.execute({}, operator="alice")
+            pe.EVIDENCE_DIR = original
+        self.assertEqual(summary["operator"], "alice")
+
+    def test_run_script_passes_operator_as_ir_operator_env(self):
+        # G4.6: isolate_host.sh/restore_host.sh read $IR_OPERATOR for
+        # evidence-log attribution -- _run_script must set it from the
+        # operator execute() was called with, not leave it to $USER.
+        engine = self._make_engine("ransomware_ir")
+        engine.operator = "bob"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+            engine._run_script({"script": "isolate_host.sh", "args": ["victim-web"]}, {})
+        _, kwargs = mock_run.call_args
+        self.assertEqual(kwargs["env"]["IR_OPERATOR"], "bob")
+
 
 class TestCleanupPersistenceAction(unittest.TestCase):
     """

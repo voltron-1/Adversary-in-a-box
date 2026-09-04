@@ -221,6 +221,7 @@ services:
         mkdir -p /etc/suricata/rules && \
         cp /lab-config/suricata.yaml /etc/suricata/suricata.yaml && \
         cp /lab-config/local.rules /etc/suricata/rules/local.rules && \
+        cp /lab-config/threshold.config /etc/suricata/rules/threshold.config && \
         # /var/log/suricata is a host bind-mount and persists across
         # runs. Stale eve.json events from a prior run (especially ones
         # captured on the wrong iface) trip an ES mapping conflict in
@@ -246,18 +247,22 @@ services:
   # ZEEK NSM -- network security monitor (Phase B2a)
   #
   # Closes pre-existing issue #13: the detection scripts under
-  # blue-team/detection/zeek/ existed but had no runtime. Zeek sits on
-  # lab-net and writes JSON logs to a shared named volume that Logstash
-  # ingests. entrypoint.sh templates Site::local_nets from LAB_NET_PREFIX
-  # so per-student isolation flows through (Zeek has no env-var
-  # substitution at the .zeek-file level).
+  # blue-team/detection/zeek/ existed but had no runtime. entrypoint.sh
+  # templates Site::local_nets from LAB_NET_PREFIX so per-student isolation
+  # flows through (Zeek has no env-var substitution at the .zeek-file level),
+  # then writes JSON logs to a shared named volume that Logstash ingests.
+  #
+  # G4.1 (Gap E): moved to network_mode: host, same as suricata below --
+  # Zeek attached to lab-net as a regular container only ever saw its own
+  # veth, making a Suricata blind spot (e.g. host-gateway INPUT traffic)
+  # also a Zeek blind spot, with no independent second sensor. entrypoint.sh
+  # auto-detects the lab bridge the same way suricata's entrypoint does,
+  # so both sensors watch the same wire.
   # ---------------------------------------------------------------------------
   zeek:
     image: zeek/zeek:7.0
     hostname: zeek
-    networks:
-      lab-net:
-        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.53
+    network_mode: "host"
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -266,8 +271,87 @@ services:
       - zeek-logs:/var/log/zeek
     environment:
       - LAB_NET_PREFIX=${LAB_NET_PREFIX:-172.20.0}
-      - ZEEK_IFACE=eth0
+      # Explicit override only -- entrypoint.sh auto-detects the lab bridge
+      # first (mirroring suricata) and falls back to this if that fails.
+      # Left unset here so auto-detect runs by default.
     entrypoint: ["/bin/sh", "/usr/local/zeek/share/zeek/site/entrypoint.sh"]
+    healthcheck:
+      # G4.1: distinguishes "no traffic yet" (not a failure -- "no attacks"
+      # isn't "no visibility") from "sensor not capturing despite traffic on
+      # the wire" (a real failure). See healthcheck.sh for the logic.
+      test: ["CMD-SHELL", "/usr/local/zeek/share/zeek/site/healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+  # #233 (re-scoped from auditd to Falco -- see
+  # findings/20260830-g233-auditd-portability-spike.md): real, kernel-level
+  # eBPF syscall telemetry for T1053.003/T1548.001/T1098.004/T1486, which
+  # previously had either a self-reported emit_syslog_advisory marker or no
+  # coverage at all (findings/20260830-g-infra1-host-telemetry-decision.md).
+  # auditd was the original G-INFRA.1 recommendation but was empirically
+  # shown to require --pid=host (host-wide process visibility on a
+  # container this lab actively attacks -- a materially bigger blast
+  # radius than anything else granted here, see docs/THREAT_MODEL.md
+  # §4.1). Falco's own blocker in that spike (CAP_SYS_RESOURCE) is an
+  # ordinary per-container capability grant instead.
+  falco:
+    image: falcosecurity/falco-no-driver:0.39.2
+    hostname: falco
+    networks:
+      lab-net:
+        ipv4_address: ${LAB_NET_PREFIX:-172.20.0}.80
+    # SYS_ADMIN/BPF/PERFMON: load and attach the modern eBPF probe.
+    # SYS_RESOURCE: raise RLIMIT_MEMLOCK for the probe's ring buffers --
+    # without it Falco's own libpman driver refuses to start (confirmed
+    # against the real falco binary; see the spike doc's Test 4).
+    # SYS_PTRACE/DAC_READ_SEARCH: read other processes' /proc entries for
+    # event enrichment (process args, exe path). NET_ADMIN/NET_RAW: some
+    # default Falco rules use socket-level fields. No docker.sock mount --
+    # this lab treats that as its highest-blast-radius grant (see
+    # docs/THREAT_MODEL.md §4.1) and container.id (available from cgroup
+    # parsing alone) is enough for this lab's rules, which key on file
+    # paths/behaviors rather than container identity.
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+      - SYS_RESOURCE
+      - IPC_LOCK
+      - NET_ADMIN
+      - NET_RAW
+      - DAC_READ_SEARCH
+      - BPF
+      - PERFMON
+    volumes:
+      # Bind-mounting the host's real /proc (not just this container's
+      # own namespace-scoped view) is Falco's standard, documented way to
+      # get full process-tree visibility without --pid=host. This means
+      # Falco observes the whole Docker host's syscalls, not just this
+      # lab's containers -- consistent with, not beyond, what
+      # docs/THREAT_MODEL.md's operator checklist already assumes ("I'm
+      # on a disposable VM or a host I don't care about").
+      - /proc:/host/proc:ro
+      - /etc:/host/etc:ro
+      - ./blue-team/detection/falco/lab_rules.yaml:/etc/falco/rules.d/lab_rules.yaml:ro
+    # Ship alerts over the same UDP syslog port every other host-telemetry
+    # source in this lab already uses (siem/logstash/pipelines/syslog.conf)
+    # instead of standing up a new ingest path. Verified against the real
+    # falco binary (--dry-run) and the real `logger` wire format during
+    # development -- see the spike doc.
+    command:
+      - /usr/bin/falco
+      - -o
+      - json_output=true
+      - -o
+      - program_output.enabled=true
+      - -o
+      - program_output.keep_alive=true
+      - -o
+      - program_output.program=logger -t falco -n logstash -P 5514 -d --rfc3164
+      - -o
+      - syslog_output.enabled=false
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -482,12 +566,42 @@ services:
       # G1.3: matches red-team's own ATTACKER_IP so scorer.py can reject a
       # syslog "detection" forged by any other lab-net peer.
       - ATTACKER_IP=${LAB_NET_PREFIX:-172.20.0}.10
+      # #233: matches the falco service's own static IP so scorer.py can
+      # reject a "falco: {...}" syslog datagram forged by any other
+      # lab-net peer, same reasoning as ATTACKER_IP above.
+      - FALCO_HOST_IP=${LAB_NET_PREFIX:-172.20.0}.80
       # G1.4: matches red-team/blue-team's LOG_LEVEL convention so the award
       # audit-trail log (#143) actually reaches container logs.
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - elasticsearch
     restart: unless-stopped
+    # #238 (G-INFRA.2 follow-up -- see
+    # findings/20260830-g-infra2-stdout-shipping-decision.md): ship this
+    # service's stdout (including the G1.4 award audit-trail log) into the
+    # existing syslog.conf pipeline instead of only being visible via
+    # `docker logs scoreboard`. Deliberately scoped to just this one
+    # service, not a blanket default -- Elasticsearch/Kibana/Logstash's own
+    # startup/access-log volume would flood syslog-* if this were applied
+    # to every container. Every line this service writes to stdout ships,
+    # not only award lines (Docker's log driver can't filter within one
+    # container's stream) -- syslog.conf's own [program]=="scoreboard"
+    # block further narrows to lines that actually look like an award.
+    #
+    # IP, not the "logstash" service name: confirmed empirically that the
+    # syslog log driver resolves syslog-address from the DOCKER DAEMON's
+    # own network context (its host-level resolver), not the container's
+    # -- unlike a normal app-level DNS lookup, it never reaches the
+    # compose network's embedded DNS at 127.0.0.11. Using "logstash" here
+    # made `docker run` refuse to even start the container ("dial udp:
+    # lookup logstash on 8.8.8.8:53: no such host"). logstash's own
+    # static address (elsewhere in this file) is the only address that
+    # actually resolves for this option.
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "udp://${LAB_NET_PREFIX:-172.20.0}.51:5514"
+        tag: "scoreboard"
 
   # ---------------------------------------------------------------------------
   # PKI LAB (OQ-4) — opt-in via `docker compose --profile pki up -d`

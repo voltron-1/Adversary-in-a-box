@@ -34,6 +34,18 @@ EOF
 
 echo "[zeek] local_nets = ${LAB_SUBNET}; log dir = ${LOG_DIR}"
 
-IFACE="${ZEEK_IFACE:-eth0}"
-echo "[zeek] starting on interface ${IFACE}..."
+# G4.1: auto-detect the lab bridge the same way suricata's entrypoint does
+# (docker-compose.yml) -- find the interface holding the lab-net gateway IP
+# (${LAB_NET_PREFIX}.1). Falls back to ${ZEEK_IFACE:-eth0} if the bridge
+# isn't reachable (e.g. a non-Linux Docker host where the bridge lives in a
+# different netns than this host-network container).
+IFACE=$(ip -o -4 addr show 2>/dev/null | awk -v ip="${LAB_NET_PREFIX:-172.20.0}.1/" '$4 ~ "^"ip {print $2; exit}')
+[ -z "$IFACE" ] && IFACE="${ZEEK_IFACE:-eth0}"
+
+# Record the resolved interface for healthcheck.sh, which needs to know
+# which interface's packet counters to check -- it can't re-run this
+# detection itself without risking a different answer mid-run.
+echo "$IFACE" > "$RUNTIME_DIR/active_iface"
+
+echo "[zeek] starting on interface ${IFACE} (lab-net gateway ${LAB_NET_PREFIX:-172.20.0}.1)..."
 exec zeek -i "$IFACE" "$RUNTIME_DIR/local.zeek"

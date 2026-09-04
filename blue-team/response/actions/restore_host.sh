@@ -4,6 +4,11 @@
 # Reverse isolate_host.sh: reconnect a quarantined container to lab-net.
 #
 # Usage: bash restore_host.sh <container_name>
+#
+# G4.6: the evidence log attributes this action to $IR_OPERATOR (threaded
+# by the dashboard from the operator-supplied `operator` request field, see
+# blue-team/dashboard/app.py). $USER is always unset in this container, so
+# the old "${USER:-unknown}" fallback logged "unknown" for every run.
 
 set -euo pipefail
 
@@ -16,16 +21,78 @@ if [[ -z "$TARGET" ]]; then
     exit 1
 fi
 
+# G4.5: $TARGET reaches docker/bash argv (CWE-88 argument injection) and
+# ultimately affects lab-net/quarantine-net membership. Reject anything
+# outside the dashboard's own hostname-safe charset (blue-team/dashboard/
+# app.py's _SAFE_HOST_RE) before it touches any command, and refuse to
+# touch infrastructure services regardless of charset validity.
+_SAFE_HOST_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$'
+if [[ ! "$TARGET" =~ $_SAFE_HOST_RE ]]; then
+    echo "[ERROR] invalid target '${TARGET}': must match ${_SAFE_HOST_RE}" >&2
+    exit 1
+fi
+
+_INFRA_SERVICES=(elasticsearch logstash kibana blue-team)
+_target_service="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' -- "$TARGET" 2>/dev/null || true)"
+for _infra in "${_INFRA_SERVICES[@]}"; do
+    if [[ "$_target_service" == "$_infra" ]]; then
+        echo "[ERROR] refusing to restore infrastructure service '${_target_service}' (container ${TARGET})" >&2
+        exit 1
+    fi
+done
+
+# G4.4: idempotent, post-condition-checked network moves. The previous
+# version's connect (below) had no `|| true` guard while its disconnect
+# did -- a re-run against an already-restored host hit "already exists" on
+# the connect and aborted under `set -e` BEFORE the guarded disconnect ever
+# ran, silently leaving the host on both networks. Check actual membership
+# via `docker network inspect` first, and verify the resulting state before
+# declaring success.
+is_connected() {
+    local network="$1" target="$2"
+    docker network inspect --format '{{range .Containers}}{{.Name}}
+{{end}}' -- "$network" 2>/dev/null | grep -qxF "$target"
+}
+
+connect_network() {
+    local network="$1" target="$2"
+    if is_connected "$network" "$target"; then
+        echo "[IR] ${target} already connected to ${network}; skipping."
+        return 0
+    fi
+    docker network connect -- "$network" "$target"
+}
+
+disconnect_network() {
+    local network="$1" target="$2"
+    if ! is_connected "$network" "$target"; then
+        echo "[IR] ${target} already disconnected from ${network}; skipping."
+        return 0
+    fi
+    docker network disconnect -- "$network" "$target"
+}
+
 echo "[IR] Reconnecting ${TARGET} to ${LAB_NET}..."
-docker network connect "$LAB_NET" "$TARGET"
+connect_network "$LAB_NET" "$TARGET"
 
 echo "[IR] Disconnecting ${TARGET} from ${QUARANTINE_NET}..."
-docker network disconnect "$QUARANTINE_NET" "$TARGET" || true
+disconnect_network "$QUARANTINE_NET" "$TARGET"
+
+# Post-condition check: verify the actual resulting network membership
+# rather than assuming success because the commands above didn't error.
+if ! is_connected "$LAB_NET" "$TARGET"; then
+    echo "[ERROR] ${TARGET} is not on ${LAB_NET} after restore." >&2
+    exit 1
+fi
+if is_connected "$QUARANTINE_NET" "$TARGET"; then
+    echo "[ERROR] ${TARGET} is still on ${QUARANTINE_NET} after restore." >&2
+    exit 1
+fi
 
 EVIDENCE_DIR="${EVIDENCE_DIR:-/evidence}"
 mkdir -p "$EVIDENCE_DIR"
 cat >> "$EVIDENCE_DIR/isolation_log.json" <<EOF
-{"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","action":"restore","host":"$TARGET","operator":"${USER:-unknown}"}
+{"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","action":"restore","host":"$TARGET","operator":"${IR_OPERATOR:-unknown}"}
 EOF
 
 echo "[IR] ${TARGET} restored to ${LAB_NET}."

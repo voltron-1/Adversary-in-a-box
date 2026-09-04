@@ -51,3 +51,13 @@ steps:
     action: log
     message: "Adding exfiltration IoCs to egress DLP and firewall rules"
     required: false
+
+  # G4.3 / OQ-3 (ADR 0001): every playbook that isolates a host must restore
+  # it before the playbook terminates -- this playbook isolated
+  # {source_host} above but had no path back to lab-net, mirroring the fix
+  # already in lateral_movement_ir.yml.
+  - name: "Restore data source host to lab-net"
+    action: run_script
+    script: restore_host.sh
+    args: ["{source_host}"]
+    required: true

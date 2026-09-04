@@ -201,6 +201,19 @@ def _validate_context(raw: object) -> dict:
     return clean
 
 
+def _validate_operator(raw: object) -> str:
+    """G4.6: validate the dashboard-supplied `operator` field before it is
+    threaded through to isolate_host.sh/restore_host.sh's IR_OPERATOR env
+    var and interpolated into the isolation_log.json evidence entry. Same
+    charset guard as the host/id context keys -- a metacharacter like `"`
+    would corrupt or inject into that JSON log."""
+    if raw is None:
+        return "unknown"
+    if not isinstance(raw, str) or not _SAFE_HOST_RE.match(raw):
+        raise ValueError("operator has invalid characters")
+    return raw
+
+
 def get_alerts():
     """Fetch alerts from Elasticsearch or fall back to demo data."""
     try:
@@ -264,6 +277,12 @@ def run_playbook():
         context = _validate_context(data.get("context"))
     except ValueError as exc:
         return jsonify({"success": False, "error": f"invalid context: {exc}"}), 400
+    # G4.6: attribute this run to a real operator instead of the container's
+    # always-unset $USER.
+    try:
+        operator = _validate_operator(data.get("operator"))
+    except ValueError as exc:
+        return jsonify({"success": False, "error": f"invalid operator: {exc}"}), 400
     try:
         import sys
 
@@ -271,7 +290,7 @@ def run_playbook():
         from response.playbook_engine import PlaybookEngine
 
         engine = PlaybookEngine(playbook_id)
-        result = engine.execute(context)
+        result = engine.execute(context, operator=operator)
         return jsonify({"success": True, "result": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

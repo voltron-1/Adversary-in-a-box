@@ -8,28 +8,89 @@
 # ---------------------------------------------------------------------------
 alert tcp any any -> $HOME_NET any (msg:"ET SCAN Nmap SYN Stealth Scan"; flags:S; threshold:type threshold,track by_src,count 20,seconds 1; classtype:attempted-recon; sid:1000001; rev:1;)
 alert tcp any any -> $HOME_NET any (msg:"ET SCAN Port Scan Detected - 10 ports in 5 sec"; flags:S; threshold:type threshold,track by_src,count 10,seconds 5; classtype:attempted-recon; sid:1000002; rev:1;)
-alert udp any any -> $HOME_NET 53 (msg:"ET RECON DNS Version Scan"; content:"|00 00 10 00 01|"; depth:5; classtype:attempted-recon; sid:1000003; rev:1;)
+# G5.4 (Gap J): the old rule keyed on 5 raw bytes at a fixed offset --
+# byte 0 is the DNS transaction ID, so this could only ever match a query
+# whose ID happened to be exactly 0x0000, never a real version-scan probe.
+# Real version-scan tooling (dig, nmap's dns-nsid, etc.) queries the CHAOS
+# class for TXT version.bind/version.server; match that against the proper
+# dns.query sticky buffer instead of guessing at header bytes.
+alert dns any any -> $HOME_NET 53 (msg:"ET RECON DNS Version Scan (CHAOS version.bind)"; dns.query; content:"version.bind"; nocase; classtype:attempted-recon; sid:1000003; rev:2;)
 
 # ---------------------------------------------------------------------------
 # INITIAL ACCESS — T1566 Phishing | T1190 Web Exploit
 # ---------------------------------------------------------------------------
-alert smtp any any -> $HOME_NET 25 (msg:"ET PHISHING Suspicious Email - Executable Attachment"; content:"Content-Disposition: attachment"; content:"filename="; pcre:"/filename=\"[^\"]*\.(exe|bat|ps1|vbs|js|hta)\"/i"; classtype:social-engineering; sid:1000010; rev:1;)
+alert smtp any any -> $HOME_NET 25 (msg:"ET PHISHING Suspicious Email - Executable Attachment"; content:"Content-Disposition: attachment"; content:"filename="; pcre:"/filename=\"[^\"]*\.(exe|bat|ps1|vbs|js|hta|pdf|doc|docm|zip|iso)\"/i"; classtype:social-engineering; sid:1000010; rev:2;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQL Injection Attempt OR 1=1"; content:"' OR"; http_uri; nocase; classtype:web-application-attack; sid:1000020; rev:1;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER XSS Attempt Script Tag"; content:"<script>"; http_uri; nocase; classtype:web-application-attack; sid:1000021; rev:1;)
-alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Path Traversal Attempt"; content:"../"; http_uri; classtype:web-application-attack; sid:1000022; rev:1;)
+# G5.4 (Gap J, found while building G5.1's harness -- not in the original
+# issue text, but the same class of bug): http_uri is libhtp's NORMALIZED
+# uri buffer, which resolves "../" away before this content match ever ran,
+# so the rule could not fire against any real traversal request. Confirmed
+# empirically: swapping to http_raw_uri (the un-decoded wire bytes) fires
+# correctly against the exact literal-".." payload red-team's own
+# exploit_web.py sends.
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Path Traversal Attempt"; content:"../"; http_raw_uri; classtype:web-application-attack; sid:1000022; rev:2;)
 alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQLi UNION SELECT"; content:"UNION SELECT"; http_uri; nocase; classtype:web-application-attack; sid:1000023; rev:1;)
+# G5.3 (Gap I): the four rules above only look at http_uri (the GET query
+# string) or, for sid:1000010, raw SMTP payload -- none of them match the
+# same payload sent as a POST body, which the lab's own campaigns and any
+# real attacker use just as often. http-body-inline is already on
+# (suricata.yaml's libhtp config), so http.request_body is populated.
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQL Injection Attempt OR 1=1 (request body)"; http.request_body; content:"' OR"; nocase; classtype:web-application-attack; sid:1000024; rev:1;)
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER XSS Attempt Script Tag (request body)"; http.request_body; content:"<script>"; nocase; classtype:web-application-attack; sid:1000025; rev:1;)
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER SQLi UNION SELECT (request body)"; http.request_body; content:"UNION SELECT"; nocase; classtype:web-application-attack; sid:1000026; rev:1;)
+# G5.3 (Gap I): red-team's exploit_web.py hits GET /file?name=<path> for its
+# path-traversal test (both a literal "../../../etc/passwd" and a
+# "..%2F..%2F..%2Fetc%2Fpasswd" URL-encoded variant). sid:1000022 only ever
+# sees the literal form (http_raw_uri, its buffer as of G5.4, is un-decoded
+# so "%2F" never becomes "/" there) -- an absolute-path-read endpoint being
+# hit at all, with any encoding, is itself the signal worth alerting on.
+alert http any any -> $HOME_NET any (msg:"ET WEB_SERVER Absolute Path File Read"; content:"/file?name="; http_uri; classtype:web-application-attack; sid:1000027; rev:1;)
 
 # ---------------------------------------------------------------------------
 # PRIVILEGE ESCALATION — T1548
 # ---------------------------------------------------------------------------
-alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET EXPLOIT Possible Privilege Escalation sudo -l enumeration"; content:"sudo"; content:"-l"; classtype:attempted-admin; sid:1000030; rev:1;)
+# G5.5 (Gap K): sid:1000030 (deleted) matched ANY tcp payload between two
+# HOME_NET hosts containing the raw substrings "sudo" and "-l" -- no port,
+# no app-layer constraint, no direction beyond host-to-host. It fired on
+# unrelated traffic that happened to contain both substrings just as
+# readily as on a real `sudo -l` invocation, and `sudo -l` itself is a
+# host-level process-execution event that was never reliably going to
+# appear as a distinctive plaintext substring on the wire in the first
+# place (a real SSH session carrying it is encrypted). T1548.003 belongs
+# behind host telemetry (process/exec events), not a Suricata content
+# match -- see docs/20260813-remediation-plan.md's G-INFRA.1. Training
+# operators to associate this alert with a real detection was worse than
+# having no detection at all.
 
 # ---------------------------------------------------------------------------
 # LATERAL MOVEMENT — T1550.002 Pass the Hash | T1563.001 SSH Hijack
 # ---------------------------------------------------------------------------
 alert tcp any any -> $HOME_NET 445 (msg:"ET LATERAL_MOVEMENT SMB Pass-the-Hash Attempt"; content:"|FF|SMB"; depth:5; classtype:policy-violation; sid:1000040; rev:1;)
-alert tcp any any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Multiple SSH Authentication Failures"; threshold:type both,track by_src,count 5,seconds 30; classtype:attempted-user; sid:1000041; rev:1;)
-alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH Connection - Possible Hijacking"; classtype:policy-violation; sid:1000042; rev:1;)
+# G5.4 (Gap J): |FF|SMB is the SMB1 protocol magic; real-world SMB traffic
+# today, including any modern pass-the-hash tooling (impacket, etc.), is
+# SMB2/3, whose magic is |FE|SMB -- the original rule could never fire
+# against traffic any current tool actually sends. Add the SMB2 magic as
+# its own rule (both can legitimately coexist for older mixed environments)
+# and enable the smb app-layer parser (below, suricata.yaml) for visibility
+# even where no sid is written against it yet.
+alert tcp any any -> $HOME_NET 445 (msg:"ET LATERAL_MOVEMENT SMB2 Pass-the-Hash Attempt"; content:"|FE|SMB"; depth:4; classtype:policy-violation; sid:1000043; rev:1;)
+# G5.5 (Gap K): rekeyed. The old rule counted every TCP packet to port 22
+# toward its "authentication failures" threshold -- SSH is encrypted past
+# the initial handshake, so Suricata cannot actually see whether auth
+# succeeded or failed, and any single active SSH session's ordinary packet
+# flow (far more than 5 packets) tripped it as if it were 5+ separate
+# failed logins. Restricted to `flags:S` (one packet per real connection
+# attempt) so the count reflects connection attempts, which is both what
+# Suricata can actually observe and a real brute-force/scan indicator.
+alert tcp any any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT SSH Connection Attempt Burst (possible brute force)"; flags:S; threshold:type both,track by_src,count 5,seconds 30; classtype:attempted-user; sid:1000041; rev:2;)
+# G5.5 (Gap K): the old rule matched every packet of every established
+# internal SSH session (no flow/threshold constraint), alert-storming on
+# completely ordinary internal SSH use. `flow:established,to_server`
+# restricts matching to the client->server direction of a completed
+# handshake; the threshold collapses a session's many packets into one
+# alert per source per minute instead of one per packet.
+alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH Connection - Possible Hijacking"; flow:established,to_server; threshold:type limit,track by_src,count 1,seconds 60; classtype:policy-violation; sid:1000042; rev:2;)
 
 # ---------------------------------------------------------------------------
 # EXFILTRATION — T1048.003 DNS Tunnel | T1041 HTTPS C2
@@ -42,15 +103,34 @@ alert tcp $HOME_NET any -> $HOME_NET 22 (msg:"ET LATERAL_MOVEMENT Internal SSH C
 # is the syslog Sigma rule exfil_https.yml (audit-4 G2b ships the campaign's
 # advisory over syslog), plus Zeek for the DNS-tunnel side. See
 # docs/mitre-attack-map.md.
-alert dns any any -> any 53 (msg:"ET DNS_TUNNEL Long DNS Subdomain - Possible Tunneling"; content:"|01 00 00 01 00 00 00 00 00 00|"; depth:10; pcre:"/^[a-z2-7]{30,}\./"; classtype:trojan-activity; sid:1000050; rev:1;)
+# G5.4 (Gap J): the old rule's 10-byte content match had no `offset`, so it
+# was anchored at byte 0 of the UDP payload -- i.e. the DNS transaction ID
+# itself, not the flags/QDCOUNT fields the byte pattern was meant to check
+# (those start at byte 2). No protocol-valid DNS query (which needs
+# QDCOUNT=1 to even pass Suricata's dns probing parser and be evaluated as
+# a dns-typed rule at all) could also satisfy this rule's byte-0 anchor.
+# Match the long-subdomain pattern against the proper dns.query sticky
+# buffer instead, which sidesteps header-byte guessing entirely.
+alert dns any any -> any 53 (msg:"ET DNS_TUNNEL Long DNS Subdomain - Possible Tunneling"; dns.query; pcre:"/^[a-z2-7]{30,}\./i"; classtype:trojan-activity; sid:1000050; rev:2;)
 alert dns any any -> any 53 (msg:"ET DNS_TUNNEL High DNS Query Rate"; threshold:type threshold,track by_src,count 50,seconds 10; classtype:trojan-activity; sid:1000051; rev:1;)
 # (reference only -- cannot fire on air-gapped lab-net; see note above)
-alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"ET C2 Suspicious HTTPS Beacon - Non-standard User-Agent"; content:"User-Agent:"; http_header; nocase; pcre:"/User-Agent:[^\r\n]*(?!Mozilla|Chrome|Safari|curl|python)/"; classtype:trojan-activity; sid:1000052; rev:1;)
+# G5.4 (Gap J): rewritten onto the http.user_agent sticky buffer instead of
+# matching the literal "User-Agent:" header name via http_header + a pcre
+# re-searching for it -- the old form worked but re-derived, less reliably,
+# what http.user_agent already isolates for exactly this purpose.
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"ET C2 Suspicious HTTPS Beacon - Non-standard User-Agent"; http.user_agent; pcre:"/^(?!.*(Mozilla|Chrome|Safari|curl|python))/"; classtype:trojan-activity; sid:1000052; rev:2;)
 
 # ---------------------------------------------------------------------------
 # PERSISTENCE — T1053.003 Cron | T1098.004 SSH Keys
 # ---------------------------------------------------------------------------
-alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET PERSISTENCE Crontab Modification Detected"; content:"crontab"; classtype:policy-violation; sid:1000060; rev:1;)
+# G5.5 (Gap K): sid:1000060 (deleted) matched ANY tcp payload between two
+# HOME_NET hosts containing the raw substring "crontab" -- the same class
+# of bug as sid:1000030 above: no port/app-layer constraint, and a
+# crontab edit is a host-level file-write event that doesn't reliably
+# cross the wire as a distinctive plaintext substring in the first place.
+# T1053.003 belongs behind host telemetry (file/process events), not a
+# Suricata content match -- see docs/20260813-remediation-plan.md's
+# G-INFRA.1.
 
 # ---------------------------------------------------------------------------
 # MALWARE / GENERAL
@@ -102,3 +182,15 @@ alert tcp any any -> $HOME_NET any (msg:"ET MALWARE EICAR Test Marker In Transit
 # of the note (e.g. over an SMB share) in a real incident.
 # ---------------------------------------------------------------------------
 alert tcp $HOME_NET any -> $HOME_NET any (msg:"ET RANSOMWARE Lab Ransom Note Marker"; content:"LAB SIMULATION -- NO ACTUAL ENCRYPTION"; classtype:trojan-activity; sid:1000110; rev:1;)
+
+# ---------------------------------------------------------------------------
+# Phase G3.5 -- containment tripwire
+# The belt to G3.1 (static compose config check) and G3.2 (live containment
+# probe)'s suspenders: those two prove the air-gap holds by inspection, but
+# nothing was actually watching the wire for the exact failure mode Phase 3
+# exists to prevent. This fires on ANY lab host traffic reaching a non-lab
+# address, regardless of technique or cause (misconfigured network driver,
+# an escaped campaign, a manual mistake) -- it does not try to distinguish
+# them, since any of them means containment already failed.
+# ---------------------------------------------------------------------------
+alert ip $HOME_NET any -> !$HOME_NET any (msg:"AIB CONTAINMENT lab host reached non-lab address"; classtype:policy-violation; sid:1000200; rev:1;)

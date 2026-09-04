@@ -101,6 +101,24 @@ class TestSuricataCoverage(unittest.TestCase):
             len(sids), len(set(sids)), f"duplicate sid: values in local.rules ({sids})"
         )
 
+    def test_containment_tripwire_rule_present(self):
+        # G3.5: belt to G3.1/G3.2's suspenders -- an active wire-level
+        # tripwire for the exact failure mode Phase 3 exists to prevent,
+        # regardless of technique or cause. Must fire on ANY lab host
+        # traffic reaching a non-lab address.
+        tripwire_lines = [
+            line
+            for line in self.rules_text.splitlines()
+            if line.strip().startswith("alert") and "AIB CONTAINMENT" in line
+        ]
+        self.assertEqual(
+            len(tripwire_lines), 1, "expected exactly one AIB CONTAINMENT tripwire rule"
+        )
+        rule = tripwire_lines[0]
+        self.assertIn("$HOME_NET any -> !$HOME_NET any", rule)
+        self.assertIn("classtype:policy-violation", rule)
+        self.assertRegex(rule, r"sid:\d+")
+
     def test_each_rule_has_a_classtype(self):
         # Filter out comment lines.
         non_comment = [
