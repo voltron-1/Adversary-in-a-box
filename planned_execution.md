@@ -9,24 +9,28 @@
 
 ## NEXT UP
 
-**No phase is in flight. The backlog is empty.**
+**Phase: M14 — Post-Release Maintenance & Build Health** ([milestone #14](https://github.com/voltron-1/Adversary-in-a-box/milestone/14),
+opened 2026-09-12). M1–M13 are all closed: 133 issues, 0 open.
 
-All 13 milestones (M1–M13) are complete: **133 issues closed, 0 open.** Phase G — the
-last open phase — closed 2026-08-30.
+- [ ] **#253 — `victim-mail` Docker build fails on Debian bullseye security-pool 404s.**
+  **This is the next unstarted item, and it is blocking CI.** `validate (3.11)` is red
+  on `main` and on every open PR because `target-env/victim-mail/Dockerfile:1` pins
+  `debian:bullseye-slim` and `apt-get install` 404s on packages rotated out of the
+  `debian-security` pool. Recommended fix: bump the base image to `debian:bookworm-slim`
+  and drop the `-qq` on `apt-get update` so the next drift is visible.
+  [#253](https://github.com/voltron-1/Adversary-in-a-box/issues/253)
 
-- [ ] **Next unstarted item: none.** New work starts by creating milestone **M14** and
-  filing issues against it. Candidate sources for M14 scope, in order of readiness:
-  1. `docs/TESTING_TODO.md` — items needing live-stack smoke tests before the next tag.
-  2. `CHANGELOG.md` `## [Unreleased]` — landed-but-untagged work; a release cut is due.
-  3. `plans/20260817-issue-labeling-scheme.md` — the repo's label taxonomy
-     (`points/*`, `priority:*`, `sprint:*`, `domain-*`, `persona:*`, `type:*`) exists
-     but **no label is applied to any of the 133 issues**. Unused tooling debt.
-  4. `scripts/setup/user_stories.yml` — stale; does not match live milestone/issue
-     state. Reconcile it with live GitHub state or retire the script.
+Queued behind it, not yet filed as issues:
+
+- [ ] Cut a release tag — `CHANGELOG.md` `## [Unreleased]` has accumulated all of
+  Phase G. Gated on #253 (don't tag on red CI) and on a version-number decision.
+- [ ] `docs/TESTING_TODO.md` — items needing live-stack smoke tests before that tag.
+- [ ] Issue-label taxonomy rollout — see Deferred below.
+- [ ] `scripts/setup/user_stories.yml` reconcile-or-retire — see Deferred below.
 
 ## LAST SESSION
 
-**2026-09-12** — Close-out and bookkeeping session. Repo docs still described Phase G
+**2026-09-12** — Close-out and bookkeeping session, then opened M14. Repo docs still described Phase G
 as "planning-only — nothing has landed yet" a month after it shipped. This session:
 synced local `main` (49 commits behind), corrected `README.md` and
 `docs/IMPLEMENTATION_PLAN.md` to Phase G **complete**, refreshed the wiki `Home` page,
@@ -34,16 +38,20 @@ committed the 13 raw audit reports from 2026-08-13 that had never been checked i
 closed all 13 milestones on GitHub, backfilled 66 missing issues onto project board #8,
 and deleted the stale `phase-g/g0.1-runtime-spike` branch (PR
 [#244](https://github.com/voltron-1/Adversary-in-a-box/pull/244), closed unmerged —
-superseded, see below).
+superseded, see below). Then opened milestone
+[M14](https://github.com/voltron-1/Adversary-in-a-box/milestone/14) and filed
+[#253](https://github.com/voltron-1/Adversary-in-a-box/issues/253) against it for the
+`victim-mail` build rot found while checking CI — a pre-existing failure reproducing on
+`main` since 2026-09-04, not introduced by this session's changes.
 
 **2026-08-30** — Phase G shipped in full: 32 M13 issues + 2 follow-ups, across 35
 merged PRs ([#202–#243](https://github.com/voltron-1/Adversary-in-a-box/pulls?q=is%3Apr+is%3Amerged+head%3Aphase-g)).
 
 ## Status
 
-All milestones complete. Verified 2026-09-12 via
-`gh api repos/voltron-1/Adversary-in-a-box/milestones` (every milestone reports
-`open_issues=0`) and `gh issue list --state open` (empty).
+**M1–M13 closed; M14 open with one issue.** Verified 2026-09-12 via
+`gh api repos/voltron-1/Adversary-in-a-box/milestones` (M1–M13 all report
+`state=closed, open_issues=0`) and `gh issue list --state open` (only #253).
 
 - [x] M1 — Lab Infrastructure & Orchestration (5) — [milestone #1](https://github.com/voltron-1/Adversary-in-a-box/milestone/1?closed=1)
 - [x] M2 — Red Team Campaigns, Domain 1 (6) — [milestone #2](https://github.com/voltron-1/Adversary-in-a-box/milestone/2?closed=1)
@@ -86,12 +94,10 @@ None. The two 2026-08-13 blockers were resolved as G-INFRA decisions:
 
 ## Deferred
 
-- **Release tag.** `CHANGELOG.md` `## [Unreleased]` has accumulated all of Phase G.
-  Reason: waiting on a maintainer decision about the version number and whether
-  `docs/TESTING_TODO.md`'s live-stack smoke tests gate the tag.
 - **Issue-label taxonomy rollout** (`plans/20260817-issue-labeling-scheme.md`). Reason:
-  the taxonomy would now be applied retroactively to 133 closed issues, which is
-  bookkeeping with no consumer until a new milestone exists. Revisit when M14 opens.
+  the taxonomy would be applied retroactively to 133 closed issues, which is
+  bookkeeping with little payoff. Now that M14 is open, the cheap version is to label
+  M14's issues going forward and leave the closed backlog unlabelled.
 - **`scripts/setup/user_stories.yml` reconciliation.** Reason: the file is stale
   against live GitHub state and `setup_project_board.sh` treats it as source of truth.
   Needs a decision — reconcile or retire — not a mechanical fix.
