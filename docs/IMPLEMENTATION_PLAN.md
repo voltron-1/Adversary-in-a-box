@@ -188,22 +188,25 @@ this plan** to keep scope honest:
 
 ## Phase G — Security & Measurement Remediation
 
-> **Status:** planning-only — nothing in Phase G has landed yet. Each
-> item below is an open GitHub issue under milestone
+> **Status: COMPLETE — 2026-08-30.** All 32 items below are closed
+> GitHub issues under milestone
 > [M13](https://github.com/voltron-1/Adversary-in-a-box/milestone/13),
+> shipped across 35 merged PRs
+> ([#202–#243](https://github.com/voltron-1/Adversary-in-a-box/pulls?q=is%3Apr+is%3Amerged+head%3Aphase-g)),
 > tracked on the [project board](https://github.com/users/voltron-1/projects/8).
 > Full technical detail (the gap analysis behind each phase and the
 > phase-gating rationale) is in
-> [`docs/20260813-remediation-plan.md`](20260813-remediation-plan.md).
-> **This table is the single source of truth for what's in Phase G —
-> edit the linked issue when scope changes, and update the row here to
-> match rather than letting the two drift.**
+> [`docs/20260813-remediation-plan.md`](20260813-remediation-plan.md);
+> the raw per-module audit reports are in [`findings/`](../findings/).
+> **This table remains the index of what was in Phase G — the linked
+> issue is authoritative for each item's outcome.**
 
 Source: a 2026-08-13 full-repo security audit + purple-team gap
 analysis, comparing 39 attacker technique/infrastructure findings
 against actual detection coverage (1 Covered / 14 Partial / 24
-Blind). Phase 0 confirms four runtime-environment assumptions before
-Phases 1/3/5 build on them — don't start those until G0.1 lands.
+Blind). Phase 0 confirmed four runtime-environment assumptions before
+Phases 1/3/5 built on them; its write-up is
+[`findings/20260813-runtime-confirmation.md`](../findings/20260813-runtime-confirmation.md).
 
 | # | Item | Size | Issue |
 |---|---|---|---|
@@ -239,6 +242,8 @@ Phases 1/3/5 build on them — don't start those until G0.1 lands.
 | G-INFRA.1 | Decision — host telemetry collector strategy (blocks G6.1's T1486/T1053.003) | XS | [#197](https://github.com/voltron-1/Adversary-in-a-box/issues/197) |
 | G-INFRA.2 | Decision — container stdout to ELK shipping | XS | [#198](https://github.com/voltron-1/Adversary-in-a-box/issues/198) |
 | G-INFRA.3 | Document ES audit-log absence as by-design | XS | [#199](https://github.com/voltron-1/Adversary-in-a-box/issues/199) |
+| G-FU.1 | Host telemetry collector — Falco eBPF (follow-up to G-INFRA.1) | M | [#233](https://github.com/voltron-1/Adversary-in-a-box/issues/233) |
+| G-FU.2 | Ship scoreboard award log to `syslog-*` via Docker's syslog driver (follow-up to G-INFRA.2) | S | [#238](https://github.com/voltron-1/Adversary-in-a-box/issues/238) |
 
 Sequencing: **G0.1 first** (de-risks everything downstream), then
 **G1.x** (the scoring/measurement trust chain — highest leverage,
@@ -258,9 +263,9 @@ order as capacity allows, with **G5.1 before G5.2–G5.5** and
   rolling backlog.
 - When a new audit lands, add findings to the appropriate phase rather
   than creating yet another `IMPLEMENTATION_PLAN_v2.md`.
-- **Phase G is the exception**: its rolling state lives in the 32
-  linked GitHub issues (milestone M13) and the project board, not in
-  this table's prose. Keep this table's rows (item, size, issue link)
-  in sync with issue titles/numbers if issues are added, split, or
-  closed, but don't duplicate acceptance criteria or rationale here —
-  that lives on the issue and in the remediation plan doc.
+- **Phase G closed 2026-08-30** — all 32 milestone-M13 issues plus two
+  follow-ups (#233, #238) are merged. Its per-item outcome lives on the
+  linked GitHub issues and the project board, not in this table's prose;
+  the table is now a historical index. Don't duplicate acceptance
+  criteria or rationale here — that lives on the issue and in the
+  remediation plan doc.
