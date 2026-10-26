@@ -1,4 +1,4 @@
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 LABEL description="Victim mail server — Postfix SMTP for phishing lab"
 
 RUN apt-get update -qq && \
