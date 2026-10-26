@@ -314,11 +314,19 @@ def _build_cases() -> dict:
         # G5.5 (#194): sid:1000041 rekeyed from claiming "auth failures"
         # (impossible for Suricata to see on encrypted SSH) to a
         # connection-attempt-burst signal it can actually observe.
+        # Bare SYNs only: no session ever reaches `established`, so this
+        # case asserts 1000041 alone. (Some Suricata builds also fire
+        # 1000042 on bare SYNs; newer CI runner builds do not.)
         "build": lambda: syn_packets(HOME_A, HOME_B, 22, 6, dport_fixed=22),
-        "expect_fire": {1000041, 1000042},
+        "expect_fire": {1000041},
     }
     cases["ssh_internal_single"] = {
-        "build": lambda: syn_packets(HOME_A, HOME_B, 22, 1, dport_fixed=22),
+        # sid:1000042 is `flow:established,to_server`, so it needs a real
+        # handshake plus a client->server payload (an SSH banner), not a
+        # bare SYN.
+        "build": lambda: tcp_conversation(
+            HOME_A, 40100, HOME_B, 22, b"SSH-2.0-OpenSSH_9.6\r\n", b"SSH-2.0-OpenSSH_9.6\r\n"
+        ),
         "expect_fire": {1000042},
     }
 
