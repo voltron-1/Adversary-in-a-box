@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 LABEL maintainer="Adversary-in-a-Box Lab"
 LABEL description="Forensic scoreboard — MTTD/MTTA tiered scoring dashboard (OQ-5)"
