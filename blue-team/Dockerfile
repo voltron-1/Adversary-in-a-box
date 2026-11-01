@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 LABEL maintainer="Adversary-in-a-Box Lab"
 LABEL description="Blue team dashboard — Flask alert triage and IR playbook runner"
